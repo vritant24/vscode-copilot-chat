@@ -20,10 +20,34 @@ import { IDomainService } from '../../common/domainService';
 import { IChatModelInformation } from '../../common/endpointProvider';
 import { ChatEndpoint } from '../../node/chatEndpoint';
 
-export class OpenAITestEndpoint extends ChatEndpoint {
+export type IModelConfigFile = {
+	modelInfo: {
+		id: string;
+		name: string;
+		version: string;
+		capabilities: {
+			supports?: {
+				parallel_tool_calls?: boolean;
+				streaming?: boolean;
+				tool_calls?: boolean;
+				vision?: boolean;
+				prediction?: boolean;
+			};
+			limits?: {
+				max_prompt_tokens?: number;
+				max_output_tokens?: number;
+			};
+		};
+	};
+	endpointConfig: {
+		url: string;
+		apiKeyEnvName: string;
+	};
+}
+
+export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 	constructor(
-		private readonly _openaiModel: string,
-		private readonly _openaiAPIKey: string,
+		private readonly modelConfig: IModelConfigFile,
 		@IDomainService domainService: IDomainService,
 		@ICAPIClientService capiClientService: ICAPIClientService,
 		@IFetcherService fetcherService: IFetcherService,
@@ -36,9 +60,9 @@ export class OpenAITestEndpoint extends ChatEndpoint {
 		@IThinkingDataService thinkingDataService: IThinkingDataService
 	) {
 		const modelInfo: IChatModelInformation = {
-			id: _openaiModel,
-			name: 'Open AI Test Model',
-			version: '20250108',
+			id: modelConfig.modelInfo.id,
+			name: modelConfig.modelInfo.name,
+			version: modelConfig.modelInfo.version,
 			model_picker_enabled: false,
 			is_chat_default: false,
 			is_chat_fallback: false,
@@ -46,13 +70,20 @@ export class OpenAITestEndpoint extends ChatEndpoint {
 				type: 'chat',
 				family: 'openai',
 				tokenizer: TokenizerType.O200K,
-				supports: { streaming: false, tool_calls: true, vision: false, prediction: false },
+				supports: {
+					parallel_tool_calls: modelConfig.modelInfo.capabilities.supports?.parallel_tool_calls ?? false,
+					streaming: modelConfig.modelInfo.capabilities.supports?.streaming ?? false,
+					tool_calls: modelConfig.modelInfo.capabilities.supports?.tool_calls ?? false,
+					vision: modelConfig.modelInfo.capabilities.supports?.vision ?? false,
+					prediction: modelConfig.modelInfo.capabilities.supports?.prediction ?? false
+				},
 				limits: {
-					max_prompt_tokens: 128000,
-					max_output_tokens: Number.MAX_SAFE_INTEGER,
+					max_prompt_tokens: modelConfig.modelInfo.capabilities.limits?.max_prompt_tokens ?? 128000,
+					max_output_tokens: modelConfig.modelInfo.capabilities.limits?.max_output_tokens ?? Number.MAX_SAFE_INTEGER,
 				}
 			}
 		};
+
 		super(
 			modelInfo,
 			domainService,
@@ -69,12 +100,17 @@ export class OpenAITestEndpoint extends ChatEndpoint {
 	}
 
 	override get urlOrRequestMetadata(): string {
-		return 'https://api.openai.com/v1/chat/completions';
+		return this.modelConfig.endpointConfig.url;
 	}
 
 	public getExtraHeaders(): Record<string, string> {
+		const apiKey = process.env[this.modelConfig.endpointConfig.apiKeyEnvName];
+		if (!apiKey) {
+			throw new Error(`API key environment variable ${this.modelConfig.endpointConfig.apiKeyEnvName} is not set`);
+		}
+
 		return {
-			"Authorization": `Bearer ${this._openaiAPIKey}`,
+			"Authorization": `Bearer ${this.modelConfig.endpointConfig.apiKeyEnvName}`,
 			"Content-Type": "application/json",
 		};
 	}
@@ -90,7 +126,7 @@ export class OpenAITestEndpoint extends ChatEndpoint {
 			return message;
 		});
 		Object.keys(body).forEach(key => delete (body as any)[key]);
-		body.model = this._openaiModel;
+		body.model = this.modelConfig.modelInfo.id; //TODO: is id the right field?
 		body.messages = newMessages;
 		body.stream = false;
 	}
@@ -99,7 +135,7 @@ export class OpenAITestEndpoint extends ChatEndpoint {
 		return true;
 	}
 
-	override cloneWithTokenOverride(modelMaxPromptTokens: number): IChatEndpoint {
-		return this.instantiationService.createInstance(OpenAITestEndpoint, this._openaiModel, this._openaiAPIKey);
+	override cloneWithTokenOverride(_modelMaxPromptTokens: number): IChatEndpoint {
+		return this.instantiationService.createInstance(OpenAICompatibleTestEndpoint, this.modelConfig);
 	}
 }

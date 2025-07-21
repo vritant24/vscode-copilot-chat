@@ -20,6 +20,7 @@ import { SimpleRPC } from '../src/extension/onboardDebug/node/copilotDebugWorker
 import { ISimulationModelConfig, createExtensionUnitTestingServices } from '../src/extension/test/node/services';
 import { CHAT_MODEL } from '../src/platform/configuration/common/configurationService';
 import { IEndpointProvider } from '../src/platform/endpoint/common/endpointProvider';
+import { IModelConfigFile } from '../src/platform/endpoint/test/node/openaiCompatibleEndpoint';
 import { fileSystemServiceReadAsJSON } from '../src/platform/filesystem/common/fileSystemService';
 import { LogLevel } from '../src/platform/log/common/logService';
 import { ParserWithCaching } from '../src/platform/parser/node/parserWithCaching';
@@ -272,7 +273,7 @@ async function prepareTestEnvironment(opts: SimulationOptions, jsonOutputPrinter
 	}
 
 	return {
-		...createSimulationTestContext(opts, runningAllTests, baseline, canUseBaseline, jsonOutputPrinter, outputPath, externalScenariosPath, rpcInExtensionHost, configs),
+		...await createSimulationTestContext(opts, runningAllTests, baseline, canUseBaseline, jsonOutputPrinter, outputPath, externalScenariosPath, rpcInExtensionHost, configs),
 		testsToRun,
 		baseline,
 		canUseBaseline,
@@ -524,7 +525,7 @@ async function listChatModels() {
 	return;
 }
 
-function createSimulationTestContext(
+async function createSimulationTestContext(
 	opts: SimulationOptions,
 	runningAllTests: boolean,
 	baseline: SimulationBaseline,
@@ -563,13 +564,29 @@ function createSimulationTestContext(
 		configs
 	};
 
-	const modelConfig: ISimulationModelConfig = {
-		chatModel: opts.chatModel,
-		fastChatModel: opts.fastChatModel,
-		smartChatModel: opts.smartChatModel,
-		embeddingModel: opts.embeddingModel,
-		fastRewriteModel: opts.fastRewriteModel
-	};
+	let modelConfig: ISimulationModelConfig;
+	if (opts.modelConfigFile) {
+		console.log("Using model configuration file: " + opts.modelConfigFile);
+		const parsedConfig = await parseModelConfigFile(opts.modelConfigFile);
+
+		// Use the single custom endpoint as the default model
+		modelConfig = {
+			chatModel: parsedConfig.modelInfo.name,
+			fastChatModel: opts.fastChatModel,
+			smartChatModel: opts.smartChatModel,
+			embeddingModel: opts.embeddingModel,
+			fastRewriteModel: opts.fastRewriteModel,
+			modelConfigFile: parsedConfig
+		};
+	} else {
+		modelConfig = {
+			chatModel: opts.chatModel,
+			fastChatModel: opts.fastChatModel,
+			smartChatModel: opts.smartChatModel,
+			embeddingModel: opts.embeddingModel,
+			fastRewriteModel: opts.fastRewriteModel
+		};
+	}
 
 
 	const simulationOutcome = rpcInExtensionHost ? new ProxiedSimulationOutcome(rpcInExtensionHost) : new SimulationOutcomeImpl(runningAllTests);
@@ -773,6 +790,45 @@ function toCsv(rows: object[]): string {
 	const rowsStr = rows.map(obj => Object.values(obj).join(',') + '\n').join('');
 
 	return header + rowsStr;
+}
+
+async function parseModelConfigFile(modelConfigFilePath: string): Promise<IModelConfigFile> {
+	const resolvedModelConfigFilePath = path.isAbsolute(modelConfigFilePath) ? modelConfigFilePath : path.join(process.cwd(), modelConfigFilePath);
+	const configFileContents = await fs.promises.readFile(resolvedModelConfigFilePath, 'utf-8');
+	const modelConfig = JSON.parse(configFileContents);
+	if (!modelConfig || typeof modelConfig !== 'object') {
+		throw new Error('Invalid configuration file ' + resolvedModelConfigFilePath);
+	}
+
+	const checkProperty = (obj: any, prop: string, type: 'string' | 'boolean' | 'number' | 'object', optional?: boolean) => {
+		if (!(prop in obj)) {
+			if (optional) {
+				return;
+			}
+			throw new Error(`Missing property '${prop}' in model configuration file ${resolvedModelConfigFilePath}`);
+		}
+		if (typeof obj[prop] !== type) {
+			throw new Error(`Property '${prop}' in model configuration file ${resolvedModelConfigFilePath} must be of type '${type}', but got '${typeof obj[prop]}'`);
+		}
+	};
+
+	checkProperty(modelConfig, 'modelInfo', 'object');
+	checkProperty(modelConfig.modelInfo, 'id', 'string');
+	checkProperty(modelConfig.modelInfo, 'name', 'string');
+	checkProperty(modelConfig.modelInfo, 'version', 'string');
+	checkProperty(modelConfig.modelInfo, 'capabilities', 'object');
+	checkProperty(modelConfig.modelInfo.capabilities.supports, 'parallel_tool_calls', 'boolean', true);
+	checkProperty(modelConfig.modelInfo.capabilities.supports, 'streaming', 'boolean', true);
+	checkProperty(modelConfig.modelInfo.capabilities.supports, 'tool_calls', 'boolean', true);
+	checkProperty(modelConfig.modelInfo.capabilities.supports, 'vision', 'boolean', true);
+	checkProperty(modelConfig.modelInfo.capabilities.supports, 'prediction', 'boolean', true);
+	checkProperty(modelConfig.modelInfo.capabilities.limits, 'max_prompt_tokens', 'number', true);
+	checkProperty(modelConfig.modelInfo.capabilities.limits, 'max_output_tokens', 'number', true);
+	checkProperty(modelConfig.endpointConfig, 'url', 'string');
+	checkProperty(modelConfig, 'endpointConfig', 'object');
+	checkProperty(modelConfig.endpointConfig, 'apiKeyEnvName', 'string');
+
+	return modelConfig as IModelConfigFile;
 }
 
 (async () => main())();
