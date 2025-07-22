@@ -106,7 +106,7 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 		}
 
 		return {
-			"Authorization": `Bearer ${this.modelConfig.apiKeyEnvName}`,
+			"Authorization": `Bearer ${apiKey}`,
 			"Content-Type": "application/json",
 		};
 	}
