@@ -802,7 +802,7 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 	}
 
 	/**
-	 * the modelConfigFile should contain objects of the form (supports both JSON formats):
+	 * the modelConfigFile.json should contain objects of the form:
 	```
 		"<model id>": {
 			"name": "<model name>",
