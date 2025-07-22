@@ -209,7 +209,7 @@ export class SimulationOptions {
 			`  --scenario-workspace-folder        If true, runs the stest inline in the scenario's workspace folder`,
 			`  --nes-unified-model                Use the unified model for NES`,
 			`  --config-file                      Path to a JSON file containing configuration options`,
-			`  --model-config-file                Path to a JSON file containing model configuration options`,
+			`  --model-config-file                Path to a JSON or YAML file containing model configuration options`,
 			``,
 		].join('\n'));
 	}

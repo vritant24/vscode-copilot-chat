@@ -789,13 +789,33 @@ function toCsv(rows: object[]): string {
 async function parseModelConfigFile(modelConfigFilePath: string): Promise<IModelConfig[]> {
 	const resolvedModelConfigFilePath = path.isAbsolute(modelConfigFilePath) ? modelConfigFilePath : path.join(process.cwd(), modelConfigFilePath);
 	const configFileContents = await fs.promises.readFile(resolvedModelConfigFilePath, 'utf-8');
-	const modelConfig = JSON.parse(configFileContents);
+
+	let modelConfig: any;
+	const fileExtension = path.extname(resolvedModelConfigFilePath).toLowerCase();
+
+	if (fileExtension === '.yaml' || fileExtension === '.yml') {
+		const yaml = await import('yaml');
+		try {
+			modelConfig = yaml.parse(configFileContents);
+		} catch (error) {
+			throw new Error(`Invalid YAML configuration file ${resolvedModelConfigFilePath}: ${error.message}`);
+		}
+	} else if (fileExtension === '.json' || !fileExtension) {
+		try {
+			modelConfig = JSON.parse(configFileContents);
+		} catch (error) {
+			throw new Error(`Invalid JSON configuration file ${resolvedModelConfigFilePath}: ${error.message}`);
+		}
+	} else {
+		throw new Error(`Unsupported configuration file format: ${fileExtension}. Only .json, .yaml, and .yml files are supported.`);
+	}
+
 	if (!modelConfig || typeof modelConfig !== 'object') {
 		throw new Error('Invalid configuration file ' + resolvedModelConfigFilePath);
 	}
 
 	/**
-	 * the modelConfigFile should contain objects of the form:
+	 * the modelConfigFile should contain objects of the form (supports both JSON and YAML formats):
 	```
 		"<model id>": {
 			"name": "<model name>",
