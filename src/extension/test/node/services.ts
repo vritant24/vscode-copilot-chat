@@ -46,6 +46,7 @@ export interface ISimulationModelConfig {
 	fastChatModel?: string;
 	embeddingModel?: EMBEDDING_MODEL;
 	fastRewriteModel?: string;
+	skipModelMetadataCache?: boolean;
 	customModelConfigs?: Map<string, IModelConfig>;
 }
 
@@ -59,6 +60,7 @@ export function createExtensionUnitTestingServices(currentTestRunInfo?: any, mod
 			modelConfig?.embeddingModel,
 			modelConfig?.fastRewriteModel,
 			currentTestRunInfo,
+			!!modelConfig?.skipModelMetadataCache,
 			modelConfig?.customModelConfigs,
 		])
 	);

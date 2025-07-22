@@ -100,7 +100,7 @@ async function run(opts: SimulationOptions): Promise<RunResult> {
 		case opts.help:
 			return opts.printHelp();
 		case opts.listModels:
-			await listChatModels();
+			await listChatModels(opts.modelCacheMode === CacheMode.Disable);
 			return;
 		case opts.listSuites: // intentional fallthrough
 		case opts.listTests: {
@@ -489,8 +489,8 @@ function listTests(allSuites: readonly SimulationSuite[], opts: SimulationOption
 	}
 }
 
-async function listChatModels() {
-	const accessor = createExtensionUnitTestingServices().createTestingAccessor();
+async function listChatModels(skipCache: boolean = false) {
+	const accessor = createExtensionUnitTestingServices(undefined, { skipModelMetadataCache: skipCache }).createTestingAccessor();
 	const endpointProvider = accessor.get(IEndpointProvider);
 	const chatEndpoints = await endpointProvider.getAllChatEndpoints();
 	console.log('Available Chat Models:\n');
@@ -579,6 +579,7 @@ async function createSimulationTestContext(
 		smartChatModel: opts.smartChatModel,
 		embeddingModel: opts.embeddingModel,
 		fastRewriteModel: opts.fastRewriteModel,
+		skipModelMetadataCache: opts.modelCacheMode === CacheMode.Disable,
 		customModelConfigs: customModelConfigMap,
 	};
 
