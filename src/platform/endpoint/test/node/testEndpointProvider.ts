@@ -27,7 +27,7 @@ import { ModelMetadataFetcher } from '../../node/modelMetadataFetcher';
 import { AzureTestEndpoint } from './azureEndpoint';
 import { CAPITestEndpoint, modelIdToTokenizer } from './capiEndpoint';
 import { CustomNesEndpoint } from './customNesEndpoint';
-import { IModelConfigFile, OpenAICompatibleTestEndpoint } from './openaiCompatibleEndpoint';
+import { IModelConfig, OpenAICompatibleTestEndpoint } from './openaiCompatibleEndpoint';
 
 
 async function getModelMetadataMap(modelMetadataFetcher: TestModelMetadataFetcher): Promise<Map<string, IChatModelInformation>> {
@@ -128,7 +128,7 @@ export class TestEndpointProvider implements IEndpointProvider {
 		private readonly embeddingModelToRunAgainst: EMBEDDING_MODEL | undefined,
 		_fastRewriteModelToRunAgainst: string | undefined,
 		info: CurrentTestRunInfo | undefined,
-		private readonly modelConfigFile: IModelConfigFile | undefined,
+		private readonly customModelConfigs: Map<string, IModelConfig> = new Map(),
 		@IInstantiationService private readonly _instantiationService: IInstantiationService
 	) {
 		const prodModelMetadata = this._instantiationService.createInstance(TestModelMetadataFetcher, undefined, false, info);
@@ -140,8 +140,9 @@ export class TestEndpointProvider implements IEndpointProvider {
 	private async getChatEndpointInfo(model: string, modelLabMetadata: Map<string, IChatModelInformation>, prodMetadata: Map<string, IChatModelInformation>): Promise<IChatEndpoint> {
 		let chatEndpoint = this._chatEndpoints.get(model);
 		if (!chatEndpoint) {
-			if (this.modelConfigFile && this.modelConfigFile.modelInfo.name === model) {
-				chatEndpoint = this._instantiationService.createInstance(OpenAICompatibleTestEndpoint, this.modelConfigFile);
+			const customModel = this.customModelConfigs.get(model);
+			if (customModel !== undefined) {
+				chatEndpoint = this._instantiationService.createInstance(OpenAICompatibleTestEndpoint, customModel);
 			} else if (model === CHAT_MODEL.CUSTOM_NES) {
 				chatEndpoint = this._instantiationService.createInstance(CustomNesEndpoint);
 			} else if (model === CHAT_MODEL.EXPERIMENTAL) {
@@ -164,8 +165,10 @@ export class TestEndpointProvider implements IEndpointProvider {
 			CHAT_MODEL.CUSTOM_NES
 		]);
 
-		if (this.modelConfigFile) {
-			modelIDs.add(this.modelConfigFile.modelInfo.id);
+		if (this.customModelConfigs.size > 0) {
+			this.customModelConfigs.forEach(config => {
+				modelIDs.add(config.name);
+			});
 		}
 
 		const modelLabMetadata: Map<string, IChatModelInformation> = await this._modelLabChatModelMetadata;

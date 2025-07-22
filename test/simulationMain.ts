@@ -20,7 +20,7 @@ import { SimpleRPC } from '../src/extension/onboardDebug/node/copilotDebugWorker
 import { ISimulationModelConfig, createExtensionUnitTestingServices } from '../src/extension/test/node/services';
 import { CHAT_MODEL } from '../src/platform/configuration/common/configurationService';
 import { IEndpointProvider } from '../src/platform/endpoint/common/endpointProvider';
-import { IModelConfigFile } from '../src/platform/endpoint/test/node/openaiCompatibleEndpoint';
+import { IModelConfig } from '../src/platform/endpoint/test/node/openaiCompatibleEndpoint';
 import { fileSystemServiceReadAsJSON } from '../src/platform/filesystem/common/fileSystemService';
 import { LogLevel } from '../src/platform/log/common/logService';
 import { ParserWithCaching } from '../src/platform/parser/node/parserWithCaching';
@@ -564,29 +564,23 @@ async function createSimulationTestContext(
 		configs
 	};
 
-	let modelConfig: ISimulationModelConfig;
+	const customModelConfigMap: Map<string, IModelConfig> = new Map();
 	if (opts.modelConfigFile) {
 		console.log("Using model configuration file: " + opts.modelConfigFile);
-		const parsedConfig = await parseModelConfigFile(opts.modelConfigFile);
-
-		// Use the single custom endpoint as the default model
-		modelConfig = {
-			chatModel: parsedConfig.modelInfo.name,
-			fastChatModel: opts.fastChatModel,
-			smartChatModel: opts.smartChatModel,
-			embeddingModel: opts.embeddingModel,
-			fastRewriteModel: opts.fastRewriteModel,
-			modelConfigFile: parsedConfig
-		};
-	} else {
-		modelConfig = {
-			chatModel: opts.chatModel,
-			fastChatModel: opts.fastChatModel,
-			smartChatModel: opts.smartChatModel,
-			embeddingModel: opts.embeddingModel,
-			fastRewriteModel: opts.fastRewriteModel
-		};
+		const customModelConfigs = await parseModelConfigFile(opts.modelConfigFile);
+		customModelConfigs.forEach(config => {
+			customModelConfigMap.set(config.id, config);
+		});
 	}
+
+	const modelConfig: ISimulationModelConfig = {
+		chatModel: opts.chatModel,
+		fastChatModel: opts.fastChatModel,
+		smartChatModel: opts.smartChatModel,
+		embeddingModel: opts.embeddingModel,
+		fastRewriteModel: opts.fastRewriteModel,
+		customModelConfigs: customModelConfigMap,
+	};
 
 
 	const simulationOutcome = rpcInExtensionHost ? new ProxiedSimulationOutcome(rpcInExtensionHost) : new SimulationOutcomeImpl(runningAllTests);
@@ -792,13 +786,39 @@ function toCsv(rows: object[]): string {
 	return header + rowsStr;
 }
 
-async function parseModelConfigFile(modelConfigFilePath: string): Promise<IModelConfigFile> {
+async function parseModelConfigFile(modelConfigFilePath: string): Promise<IModelConfig[]> {
 	const resolvedModelConfigFilePath = path.isAbsolute(modelConfigFilePath) ? modelConfigFilePath : path.join(process.cwd(), modelConfigFilePath);
 	const configFileContents = await fs.promises.readFile(resolvedModelConfigFilePath, 'utf-8');
 	const modelConfig = JSON.parse(configFileContents);
 	if (!modelConfig || typeof modelConfig !== 'object') {
 		throw new Error('Invalid configuration file ' + resolvedModelConfigFilePath);
 	}
+
+	/**
+	 * the modelConfigFile should contain objects of the form:
+	```
+		"<model id>": {
+			"name": "<model name>",
+			"version": "<model version>",
+			"capabilities": {
+				"supports"?: {
+					"parallel_tool_calls"?: <boolean>,
+					"streaming"?: <boolean>,
+					"tool_calls"?: <boolean>,
+					"vision"?: <boolean>,
+					"prediction"?: <boolean>
+				},
+				"limits"?: {
+					"max_prompt_tokens"?: <number>,
+					"max_output_tokens"?: <number>
+				}
+			},
+			"url": "<endpoint URL>",
+			"apiKeyEnvName": "<environment variable name for API key>"
+		},
+		...
+	```
+	*/
 
 	const checkProperty = (obj: any, prop: string, type: 'string' | 'boolean' | 'number' | 'object', optional?: boolean) => {
 		if (!(prop in obj)) {
@@ -812,23 +832,50 @@ async function parseModelConfigFile(modelConfigFilePath: string): Promise<IModel
 		}
 	};
 
-	checkProperty(modelConfig, 'modelInfo', 'object');
-	checkProperty(modelConfig.modelInfo, 'id', 'string');
-	checkProperty(modelConfig.modelInfo, 'name', 'string');
-	checkProperty(modelConfig.modelInfo, 'version', 'string');
-	checkProperty(modelConfig.modelInfo, 'capabilities', 'object');
-	checkProperty(modelConfig.modelInfo.capabilities.supports, 'parallel_tool_calls', 'boolean', true);
-	checkProperty(modelConfig.modelInfo.capabilities.supports, 'streaming', 'boolean', true);
-	checkProperty(modelConfig.modelInfo.capabilities.supports, 'tool_calls', 'boolean', true);
-	checkProperty(modelConfig.modelInfo.capabilities.supports, 'vision', 'boolean', true);
-	checkProperty(modelConfig.modelInfo.capabilities.supports, 'prediction', 'boolean', true);
-	checkProperty(modelConfig.modelInfo.capabilities.limits, 'max_prompt_tokens', 'number', true);
-	checkProperty(modelConfig.modelInfo.capabilities.limits, 'max_output_tokens', 'number', true);
-	checkProperty(modelConfig.endpointConfig, 'url', 'string');
-	checkProperty(modelConfig, 'endpointConfig', 'object');
-	checkProperty(modelConfig.endpointConfig, 'apiKeyEnvName', 'string');
+	const modelConfigs: IModelConfig[] = [];
+	for (const modelId in modelConfig) {
+		const model = modelConfig[modelId];
+		if (typeof model !== 'object') {
+			throw new Error(`Model configuration for '${modelId}' must be an object`);
+		}
+		checkProperty(model, 'name', 'string');
+		checkProperty(model, 'version', 'string');
+		checkProperty(model, 'capabilities', 'object');
+		checkProperty(model.capabilities, 'supports', 'object', true);
+		checkProperty(model.capabilities.supports, 'parallel_tool_calls', 'boolean', true);
+		checkProperty(model.capabilities.supports, 'streaming', 'boolean', true);
+		checkProperty(model.capabilities.supports, 'tool_calls', 'boolean', true);
+		checkProperty(model.capabilities.supports, 'vision', 'boolean', true);
+		checkProperty(model.capabilities.supports, 'prediction', 'boolean', true);
+		checkProperty(model.capabilities, 'limits', 'object', true);
+		checkProperty(model.capabilities.limits, 'max_prompt_tokens', 'number', true);
+		checkProperty(model.capabilities.limits, 'max_output_tokens', 'number', true);
+		checkProperty(model, 'url', 'string');
+		checkProperty(model, 'apiKeyEnvName', 'string');
+		modelConfigs.push({
+			id: modelId,
+			name: model.name,
+			version: model.version,
+			capabilities: {
+				supports: {
+					parallel_tool_calls: model.capabilities.supports.parallel_tool_calls ?? false,
+					streaming: model.capabilities.supports.streaming ?? false,
+					tool_calls: model.capabilities.supports.tool_calls ?? false,
+					vision: model.capabilities.supports.vision ?? false,
+					prediction: model.capabilities.supports.prediction ?? false
+				},
+				limits: {
+					max_prompt_tokens: model.capabilities.limits.max_prompt_tokens ?? 128000,
+					max_output_tokens: model.capabilities.limits.max_output_tokens ?? Number.MAX_SAFE_INTEGER
+				}
+			},
+			url: model.url,
+			apiKeyEnvName: model.apiKeyEnvName
 
-	return modelConfig as IModelConfigFile;
+		});
+	}
+
+	return modelConfigs;
 }
 
 (async () => main())();

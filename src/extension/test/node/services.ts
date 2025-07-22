@@ -11,7 +11,7 @@ import { EMBEDDING_MODEL } from '../../../platform/configuration/common/configur
 import { IDiffService } from '../../../platform/diff/common/diffService';
 import { DiffServiceImpl } from '../../../platform/diff/node/diffServiceImpl';
 import { IEndpointProvider } from '../../../platform/endpoint/common/endpointProvider';
-import { IModelConfigFile } from '../../../platform/endpoint/test/node/openaiCompatibleEndpoint';
+import { IModelConfig } from '../../../platform/endpoint/test/node/openaiCompatibleEndpoint';
 import { TestEndpointProvider } from '../../../platform/endpoint/test/node/testEndpointProvider';
 import { EditLogService, IEditLogService } from '../../../platform/multiFileEdit/common/editLogService';
 import { IMultiFileEditInternalTelemetryService, MultiFileEditInternalTelemetryService } from '../../../platform/multiFileEdit/common/multiFileEditQualityTelemetry';
@@ -46,7 +46,7 @@ export interface ISimulationModelConfig {
 	fastChatModel?: string;
 	embeddingModel?: EMBEDDING_MODEL;
 	fastRewriteModel?: string;
-	modelConfigFile?: IModelConfigFile;
+	customModelConfigs?: Map<string, IModelConfig>;
 }
 
 export function createExtensionUnitTestingServices(currentTestRunInfo?: any, modelConfig?: ISimulationModelConfig): TestingServiceCollection {
@@ -59,7 +59,7 @@ export function createExtensionUnitTestingServices(currentTestRunInfo?: any, mod
 			modelConfig?.embeddingModel,
 			modelConfig?.fastRewriteModel,
 			currentTestRunInfo,
-			modelConfig?.modelConfigFile,
+			modelConfig?.customModelConfigs,
 		])
 	);
 	testingServiceCollection.define(IGithubCodeSearchService, new SyncDescriptor(GithubCodeSearchService));
