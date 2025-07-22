@@ -16,6 +16,7 @@ import { createConnection } from 'net';
 import * as path from 'path';
 import * as v8 from 'v8';
 import type * as vscodeType from 'vscode';
+import yaml from 'yaml';
 import { SimpleRPC } from '../src/extension/onboardDebug/node/copilotDebugWorker/rpc';
 import { ISimulationModelConfig, createExtensionUnitTestingServices } from '../src/extension/test/node/services';
 import { CHAT_MODEL } from '../src/platform/configuration/common/configurationService';
@@ -52,7 +53,6 @@ import { logger } from './simulationLogger';
 import { IInitParams, IInitResult, IRunTestParams, IRunTestResult } from './testExecutionInExtension';
 import { GroupedScores, ITestResult, SimulationTestContext, executeTestOnce, executeTests } from './testExecutor';
 import { createScoreRenderer, fileExists, printTime } from './util';
-
 const dotSimulationPath = path.join(__dirname, `../${SIMULATION_FOLDER_NAME}`);
 
 async function main() {
@@ -273,7 +273,7 @@ async function prepareTestEnvironment(opts: SimulationOptions, jsonOutputPrinter
 	}
 
 	return {
-		...await createSimulationTestContext(opts, runningAllTests, baseline, canUseBaseline, jsonOutputPrinter, outputPath, externalScenariosPath, rpcInExtensionHost, configs),
+		...createSimulationTestContext(opts, runningAllTests, baseline, canUseBaseline, jsonOutputPrinter, outputPath, externalScenariosPath, rpcInExtensionHost, configs),
 		testsToRun,
 		baseline,
 		canUseBaseline,
@@ -525,7 +525,7 @@ async function listChatModels(skipCache: boolean = false) {
 	return;
 }
 
-async function createSimulationTestContext(
+function createSimulationTestContext(
 	opts: SimulationOptions,
 	runningAllTests: boolean,
 	baseline: SimulationBaseline,
@@ -567,7 +567,7 @@ async function createSimulationTestContext(
 	const customModelConfigMap: Map<string, IModelConfig> = new Map();
 	if (opts.modelConfigFile) {
 		console.log("Using model configuration file: " + opts.modelConfigFile);
-		const customModelConfigs = await parseModelConfigFile(opts.modelConfigFile);
+		const customModelConfigs = parseModelConfigFile(opts.modelConfigFile);
 		customModelConfigs.forEach(config => {
 			customModelConfigMap.set(config.id, config);
 		});
@@ -787,15 +787,14 @@ function toCsv(rows: object[]): string {
 	return header + rowsStr;
 }
 
-async function parseModelConfigFile(modelConfigFilePath: string): Promise<IModelConfig[]> {
+function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 	const resolvedModelConfigFilePath = path.isAbsolute(modelConfigFilePath) ? modelConfigFilePath : path.join(process.cwd(), modelConfigFilePath);
-	const configFileContents = await fs.promises.readFile(resolvedModelConfigFilePath, 'utf-8');
+	const configFileContents = fs.readFileSync(resolvedModelConfigFilePath, 'utf-8');
 
 	let modelConfig: any;
 	const fileExtension = path.extname(resolvedModelConfigFilePath).toLowerCase();
 
 	if (fileExtension === '.yaml' || fileExtension === '.yml') {
-		const yaml = await import('yaml');
 		try {
 			modelConfig = yaml.parse(configFileContents);
 		} catch (error) {
