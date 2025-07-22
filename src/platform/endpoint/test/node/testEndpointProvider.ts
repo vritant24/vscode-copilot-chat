@@ -140,7 +140,7 @@ export class TestEndpointProvider implements IEndpointProvider {
 	private async getChatEndpointInfo(model: string, modelLabMetadata: Map<string, IChatModelInformation>, prodMetadata: Map<string, IChatModelInformation>): Promise<IChatEndpoint> {
 		let chatEndpoint = this._chatEndpoints.get(model);
 		if (!chatEndpoint) {
-			if (this.modelConfigFile && this.modelConfigFile.modelInfo.id === model) {
+			if (this.modelConfigFile && this.modelConfigFile.modelInfo.name === model) {
 				chatEndpoint = this._instantiationService.createInstance(OpenAICompatibleTestEndpoint, this.modelConfigFile);
 			} else if (model === CHAT_MODEL.CUSTOM_NES) {
 				chatEndpoint = this._instantiationService.createInstance(CustomNesEndpoint);
