@@ -16,7 +16,6 @@ import { createConnection } from 'net';
 import * as path from 'path';
 import * as v8 from 'v8';
 import type * as vscodeType from 'vscode';
-import yaml from 'yaml';
 import { SimpleRPC } from '../src/extension/onboardDebug/node/copilotDebugWorker/rpc';
 import { ISimulationModelConfig, createExtensionUnitTestingServices } from '../src/extension/test/node/services';
 import { CHAT_MODEL } from '../src/platform/configuration/common/configurationService';
@@ -792,22 +791,10 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 	const configFileContents = fs.readFileSync(resolvedModelConfigFilePath, 'utf-8');
 
 	let modelConfig: any;
-	const fileExtension = path.extname(resolvedModelConfigFilePath).toLowerCase();
-
-	if (fileExtension === '.yaml' || fileExtension === '.yml') {
-		try {
-			modelConfig = yaml.parse(configFileContents);
-		} catch (error) {
-			throw new Error(`Invalid YAML configuration file ${resolvedModelConfigFilePath}: ${error.message}`);
-		}
-	} else if (fileExtension === '.json' || !fileExtension) {
-		try {
-			modelConfig = JSON.parse(configFileContents);
-		} catch (error) {
-			throw new Error(`Invalid JSON configuration file ${resolvedModelConfigFilePath}: ${error.message}`);
-		}
-	} else {
-		throw new Error(`Unsupported configuration file format: ${fileExtension}. Only .json, .yaml, and .yml files are supported.`);
+	try {
+		modelConfig = JSON.parse(configFileContents);
+	} catch (error) {
+		throw new Error(`Invalid JSON configuration file ${resolvedModelConfigFilePath}: ${error.message}`);
 	}
 
 	if (!modelConfig || typeof modelConfig !== 'object') {
@@ -815,7 +802,7 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 	}
 
 	/**
-	 * the modelConfigFile should contain objects of the form (supports both JSON and YAML formats):
+	 * the modelConfigFile should contain objects of the form (supports both JSON formats):
 	```
 		"<model id>": {
 			"name": "<model name>",
