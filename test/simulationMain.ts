@@ -807,6 +807,7 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 		"<model id>": {
 			"name": "<model name>",
 			"version": "<model version>",
+			"type": "<model type>", // 'openai' or 'azureOpenai'
 			"capabilities": {
 				"supports"?: {
 					"parallel_tool_calls"?: <boolean>,
