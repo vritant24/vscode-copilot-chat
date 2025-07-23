@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { OpenAI } from '@vscode/prompt-tsx';
 import { TokenizerType } from '../../../../util/common/tokenizer';
 import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
 import { IAuthenticationService } from '../../../authentication/common/authentication';
@@ -10,6 +11,7 @@ import { IChatMLFetcher } from '../../../chat/common/chatMLFetcher';
 import { IEnvService } from '../../../env/common/envService';
 import { IFetcherService } from '../../../networking/common/fetcherService';
 import { IChatEndpoint, IEndpointBody } from '../../../networking/common/networking';
+import { CAPIChatMessage } from '../../../networking/common/openai';
 import { ITelemetryService } from '../../../telemetry/common/telemetry';
 import { IThinkingDataService } from '../../../thinking/node/thinkingDataService';
 import { ITokenizerProvider } from '../../../tokenizer/node/tokenizer';
@@ -23,6 +25,7 @@ export type IModelConfig = {
 	name: string;
 	version: string;
 	type: 'openai' | 'azureOpenai';
+	useDeveloperRole: boolean;
 	capabilities: {
 		supports: {
 			parallel_tool_calls: boolean;
@@ -110,6 +113,7 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 				"Content-Type": "application/json",
 			};
 		}
+
 		return {
 			"Authorization": `Bearer ${apiKey}`,
 			"Content-Type": "application/json",
@@ -123,6 +127,19 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 				delete body.snippy;
 				delete body.intent;
 			}
+		}
+
+		if (this.modelConfig.useDeveloperRole && body) {
+			const newMessages = body.messages!.map((message: CAPIChatMessage) => {
+				if (message.role === OpenAI.ChatRole.System) {
+					return { role: 'developer' as OpenAI.ChatRole.System, content: message.content };
+				}
+				return message;
+			});
+			Object.keys(body).forEach(key => delete (body as any)[key]);
+			body.model = this.modelConfig.id; //TODO: is id the right field?
+			body.messages = newMessages;
+			body.stream = false;
 		}
 	}
 

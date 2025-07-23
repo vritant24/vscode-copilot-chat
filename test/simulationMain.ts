@@ -808,6 +808,7 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 			"name": "<model name>",
 			"version": "<model version>",
 			"type": "<model type>", // 'openai' or 'azureOpenai'
+			"useDeveloperRole": <boolean>, // optional, defaults to false
 			"capabilities": {
 				"supports"?: {
 					"parallel_tool_calls"?: <boolean>,
@@ -852,6 +853,7 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 		if (model.type !== 'openai' && model.type !== 'azureOpenai') {
 			throw new Error(`Model type '${model.type}' is not supported. Only 'openai' and 'azureOpenai' are allowed.`);
 		}
+		checkProperty(model, 'useDeveloperRole', 'boolean', true);
 		checkProperty(model, 'capabilities', 'object');
 		checkProperty(model.capabilities, 'supports', 'object', true);
 		if (model.capabilities.supports) {
@@ -873,6 +875,7 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 			name: model.name,
 			version: model.version,
 			type: model.type,
+			useDeveloperRole: model.useDeveloperRole ?? false,
 			capabilities: {
 				supports: {
 					parallel_tool_calls: model.capabilities.supports.parallel_tool_calls ?? false,
