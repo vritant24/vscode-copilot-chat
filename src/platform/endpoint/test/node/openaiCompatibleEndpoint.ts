@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { OpenAI } from '@vscode/prompt-tsx';
 import { TokenizerType } from '../../../../util/common/tokenizer';
 import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
 import { IAuthenticationService } from '../../../authentication/common/authentication';
@@ -11,7 +10,6 @@ import { IChatMLFetcher } from '../../../chat/common/chatMLFetcher';
 import { IEnvService } from '../../../env/common/envService';
 import { IFetcherService } from '../../../networking/common/fetcherService';
 import { IChatEndpoint, IEndpointBody } from '../../../networking/common/networking';
-import { CAPIChatMessage } from '../../../networking/common/openai';
 import { ITelemetryService } from '../../../telemetry/common/telemetry';
 import { IThinkingDataService } from '../../../thinking/node/thinkingDataService';
 import { ITokenizerProvider } from '../../../tokenizer/node/tokenizer';
@@ -24,6 +22,7 @@ export type IModelConfig = {
 	id: string;
 	name: string;
 	version: string;
+	type: 'openai' | 'azureOpenai';
 	capabilities: {
 		supports: {
 			parallel_tool_calls: boolean;
@@ -105,6 +104,12 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 			throw new Error(`API key environment variable ${this.modelConfig.apiKeyEnvName} is not set`);
 		}
 
+		if (this.modelConfig.type === 'azureOpenai') {
+			return {
+				"api-key": apiKey,
+				"Content-Type": "application/json",
+			};
+		}
 		return {
 			"Authorization": `Bearer ${apiKey}`,
 			"Content-Type": "application/json",
@@ -112,19 +117,13 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 	}
 
 	override interceptBody(body: IEndpointBody | undefined): void {
-		if (!body) {
-			return;
-		}
-		const newMessages = body.messages!.map((message: CAPIChatMessage) => {
-			if (message.role === OpenAI.ChatRole.System) {
-				return { role: 'developer' as OpenAI.ChatRole.System, content: message.content };
+		super.interceptBody(body);
+		if (this.modelConfig.type === 'azureOpenai') {
+			if (body) {
+				delete body.snippy;
+				delete body.intent;
 			}
-			return message;
-		});
-		Object.keys(body).forEach(key => delete (body as any)[key]);
-		body.model = this.modelConfig.id; //TODO: is id the right field?
-		body.messages = newMessages;
-		body.stream = false;
+		}
 	}
 
 	override async acceptChatPolicy(): Promise<boolean> {
