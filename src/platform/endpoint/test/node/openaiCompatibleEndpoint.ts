@@ -66,7 +66,7 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 			is_chat_fallback: false,
 			capabilities: {
 				type: 'chat',
-				family: 'openai',
+				family: modelConfig.type === 'azureOpenai' ? 'azure' : 'openai',
 				tokenizer: TokenizerType.O200K,
 				supports: {
 					parallel_tool_calls: modelConfig.capabilities.supports.parallel_tool_calls,
