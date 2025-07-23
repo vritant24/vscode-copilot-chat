@@ -849,14 +849,18 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 		checkProperty(model, 'version', 'string');
 		checkProperty(model, 'capabilities', 'object');
 		checkProperty(model.capabilities, 'supports', 'object', true);
-		checkProperty(model.capabilities.supports, 'parallel_tool_calls', 'boolean', true);
-		checkProperty(model.capabilities.supports, 'streaming', 'boolean', true);
-		checkProperty(model.capabilities.supports, 'tool_calls', 'boolean', true);
-		checkProperty(model.capabilities.supports, 'vision', 'boolean', true);
-		checkProperty(model.capabilities.supports, 'prediction', 'boolean', true);
+		if (model.capabilities.supports) {
+			checkProperty(model.capabilities.supports, 'parallel_tool_calls', 'boolean', true);
+			checkProperty(model.capabilities.supports, 'streaming', 'boolean', true);
+			checkProperty(model.capabilities.supports, 'tool_calls', 'boolean', true);
+			checkProperty(model.capabilities.supports, 'vision', 'boolean', true);
+			checkProperty(model.capabilities.supports, 'prediction', 'boolean', true);
+		}
 		checkProperty(model.capabilities, 'limits', 'object', true);
-		checkProperty(model.capabilities.limits, 'max_prompt_tokens', 'number', true);
-		checkProperty(model.capabilities.limits, 'max_output_tokens', 'number', true);
+		if (model.capabilities.limits) {
+			checkProperty(model.capabilities.limits, 'max_prompt_tokens', 'number', true);
+			checkProperty(model.capabilities.limits, 'max_output_tokens', 'number', true);
+		}
 		checkProperty(model, 'url', 'string');
 		checkProperty(model, 'apiKeyEnvName', 'string');
 		modelConfigs.push({
