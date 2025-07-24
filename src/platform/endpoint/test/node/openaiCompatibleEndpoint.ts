@@ -26,6 +26,7 @@ export type IModelConfig = {
 	version: string;
 	type: 'openai' | 'azureOpenai';
 	useDeveloperRole: boolean;
+	disableTemperature: boolean;
 	capabilities: {
 		supports: {
 			parallel_tool_calls: boolean;
@@ -138,6 +139,10 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 				body['stream_options'] = { 'include_usage': true };
 				body.model = this.modelConfig.name;
 			}
+		}
+
+		if (this.modelConfig.disableTemperature && body) {
+			delete body.temperature;
 		}
 
 		if (this.modelConfig.useDeveloperRole && body) {
