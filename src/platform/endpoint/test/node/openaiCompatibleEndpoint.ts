@@ -122,10 +122,21 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 
 	override interceptBody(body: IEndpointBody | undefined): void {
 		super.interceptBody(body);
+
+		if (body?.tools?.length === 0) {
+			delete body.tools;
+		}
+
 		if (this.modelConfig.type === 'azureOpenai') {
 			if (body) {
 				delete body.snippy;
 				delete body.intent;
+			}
+		} else if (this.modelConfig.type === 'openai') {
+			if (body) {
+				delete body.max_tokens;
+				body['stream_options'] = { 'include_usage': true };
+				body.model = this.modelConfig.name;
 			}
 		}
 
@@ -137,9 +148,7 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 				return message;
 			});
 			Object.keys(body).forEach(key => delete (body as any)[key]);
-			body.model = this.modelConfig.id; //TODO: is id the right field?
 			body.messages = newMessages;
-			body.stream = false;
 		}
 	}
 
