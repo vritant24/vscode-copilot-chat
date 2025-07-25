@@ -37,6 +37,7 @@ export type IModelConfig = {
 		limits: {
 			max_prompt_tokens: number;
 			max_output_tokens: number;
+			max_context_window_tokens?: number;
 		};
 	};
 	url: string;
@@ -90,6 +91,7 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 				limits: {
 					max_prompt_tokens: modelConfig.capabilities.limits.max_prompt_tokens,
 					max_output_tokens: modelConfig.capabilities.limits.max_output_tokens,
+					max_context_window_tokens: modelConfig.capabilities.limits.max_context_window_tokens
 				}
 			}
 		};

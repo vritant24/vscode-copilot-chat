@@ -819,7 +819,8 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 				},
 				"limits"?: {
 					"max_prompt_tokens"?: <number>,
-					"max_output_tokens"?: <number>
+					"max_output_tokens"?: <number>,
+					"max_context_window_tokens"?: <number>
 				}
 			},
 			"url": "<endpoint URL>",
@@ -876,6 +877,7 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 		if (model.capabilities.limits) {
 			checkProperty(model.capabilities.limits, 'max_prompt_tokens', 'number', true);
 			checkProperty(model.capabilities.limits, 'max_output_tokens', 'number', true);
+			checkProperty(model.capabilities.limits, 'max_context_window_tokens', 'number', true);
 		}
 		checkProperty(model, 'url', 'string');
 		checkProperty(model, 'apiKeyEnvName', 'string');
@@ -920,7 +922,8 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 				},
 				limits: {
 					max_prompt_tokens: model.capabilities.limits?.max_prompt_tokens ?? 128000,
-					max_output_tokens: model.capabilities.limits?.max_output_tokens ?? Number.MAX_SAFE_INTEGER
+					max_output_tokens: model.capabilities.limits?.max_output_tokens ?? Number.MAX_SAFE_INTEGER,
+					max_context_window_tokens: model.capabilities.limits?.max_context_window_tokens
 				}
 			},
 			url: model.url,
