@@ -24,9 +24,8 @@ export type IModelConfig = {
 	id: string;
 	name: string;
 	version: string;
-	type: 'openai' | 'azureOpenai';
 	useDeveloperRole: boolean;
-	disableTemperature: boolean;
+	type: 'openai' | 'azureOpenai';
 	capabilities: {
 		supports: {
 			parallel_tool_calls: boolean;
@@ -42,6 +41,18 @@ export type IModelConfig = {
 	};
 	url: string;
 	apiKeyEnvName: string;
+	useBearerAuth: boolean; // If false, the `api-key` header will be used instead of the `Authorization` header. Default is true.
+	overrides: {
+		// If any value is set to null, it will be deleted from the request body
+		// if the value is undefined, it will not override any existing value in the request body
+		// if the value is set, it will override the existing value in the request body
+		temperature?: number | null;
+		top_p?: number | null;
+		snippy?: boolean | null;
+		max_tokens?: number | null;
+		max_completion_tokens?: number | null;
+		intent?: boolean | null;
+	};
 }
 
 export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
@@ -108,15 +119,15 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 			throw new Error(`API key environment variable ${this.modelConfig.apiKeyEnvName} is not set`);
 		}
 
-		if (this.modelConfig.type === 'azureOpenai') {
+		if (this.modelConfig.useBearerAuth) {
 			return {
-				"api-key": apiKey,
+				"Authorization": `Bearer ${apiKey}`,
 				"Content-Type": "application/json",
 			};
 		}
 
 		return {
-			"Authorization": `Bearer ${apiKey}`,
+			"api-key": apiKey,
 			"Content-Type": "application/json",
 		};
 	}
@@ -128,21 +139,59 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 			delete body.tools;
 		}
 
-		if (this.modelConfig.type === 'azureOpenai') {
-			if (body) {
+		if (body) {
+			if (this.modelConfig.overrides.snippy === null) {
 				delete body.snippy;
-				delete body.intent;
+			} else if (this.modelConfig.overrides.snippy) {
+				body.snippy = { enabled: this.modelConfig.overrides.snippy };
 			}
-		} else if (this.modelConfig.type === 'openai') {
-			if (body) {
+
+			if (this.modelConfig.overrides.intent === null) {
+				delete body.intent;
+			} else if (this.modelConfig.overrides.intent) {
+				body.intent = this.modelConfig.overrides.intent;
+			}
+
+			if (this.modelConfig.overrides.temperature === null) {
+				delete body.temperature;
+			} else if (this.modelConfig.overrides.temperature) {
+				body.temperature = this.modelConfig.overrides.temperature;
+			}
+
+			if (this.modelConfig.overrides.top_p === null) {
+				delete body.top_p;
+			} else if (this.modelConfig.overrides.top_p) {
+				body.top_p = this.modelConfig.overrides.top_p;
+			}
+
+			if (this.modelConfig.overrides.max_tokens === null) {
 				delete body.max_tokens;
-				body['stream_options'] = { 'include_usage': true };
-				body.model = this.modelConfig.name;
+			} else if (this.modelConfig.overrides.max_tokens) {
+				body.max_tokens = this.modelConfig.overrides.max_tokens;
 			}
 		}
 
-		if (this.modelConfig.disableTemperature && body) {
-			delete body.temperature;
+
+		if (this.modelConfig.type === 'openai') {
+			if (body) {
+				// we need to set this to unsure usage stats are logged
+				body['stream_options'] = { 'include_usage': true };
+				// OpenAI requires the model name to be set in the body
+				body.model = this.modelConfig.name;
+
+				const newMessages: CAPIChatMessage[] = body.messages!.map((message: CAPIChatMessage): CAPIChatMessage => {
+					if (message.role === OpenAI.ChatRole.System) {
+						return {
+							role: OpenAI.ChatRole.User,
+							content: message.content,
+						};
+					} else {
+						return message;
+					}
+				});
+				// Add the messages & model back
+				body['messages'] = newMessages;
+			}
 		}
 
 		if (this.modelConfig.useDeveloperRole && body) {
