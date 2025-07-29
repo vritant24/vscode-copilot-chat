@@ -825,9 +825,9 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 				}
 			},
 			"auth?": {
-				"useBearerHeader": <boolean>, // Use Bearer token for authentication. Defaults to false
-				"useApiKeyHeader": <boolean>, // Use API key for authentication. Defaults to false
-				"apiKeyEnvName"?: "<environment variable name for API key>"
+				"useBearerHeader"?: <boolean>, // Use Bearer token for authentication. Defaults to false
+				"useApiKeyHeader"?: <boolean>, // Use API key for authentication. Defaults to false
+				"apiKeyEnvName": "<environment variable name for API key to be used for the above headers>"
 			},
 			"overrides"?: {
 				"requestHeaders"?: { "<header name>": "<header value>" }, // optional, custom request headers
@@ -896,7 +896,7 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 		if (model.auth) {
 			checkProperty(model.auth, 'useBearerHeader', 'boolean', true);
 			checkProperty(model.auth, 'useApiKeyHeader', 'boolean', true);
-			checkProperty(model.auth, 'apiKeyEnvName', 'string', true);
+			checkProperty(model.auth, 'apiKeyEnvName', 'string');
 		}
 
 		checkProperty(model, 'overrides', 'object', true);
@@ -942,9 +942,9 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 				temperature: model.overrides?.hasOwnProperty('temperature') ? model.overrides.temperature : undefined,
 				top_p: model.overrides?.hasOwnProperty('top_p') ? model.overrides.top_p : undefined,
 				snippy: model.overrides?.hasOwnProperty('snippy') ? model.overrides.snippy : undefined,
+				intent: model.overrides?.hasOwnProperty('intent') ? model.overrides.intent : undefined,
 				max_tokens: model.overrides?.hasOwnProperty('max_tokens') ? model.overrides.max_tokens : undefined,
 				max_completion_tokens: model.overrides?.hasOwnProperty('max_completion_tokens') ? model.overrides.max_completion_tokens : undefined,
-				intent: model.overrides?.hasOwnProperty('intent') ? model.overrides.intent : undefined
 			}
 		});
 	}
