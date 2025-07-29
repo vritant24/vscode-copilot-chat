@@ -933,9 +933,9 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 				}
 			},
 			auth: {
-				useBearerHeader: model.auth.useBearerHeader ?? false,
-				useApiKeyHeader: model.auth.useApiKeyHeader ?? false,
-				apiKeyEnvName: model.auth.apiKeyEnvName
+				useBearerHeader: model.auth?.useBearerHeader ?? false,
+				useApiKeyHeader: model.auth?.useApiKeyHeader ?? false,
+				apiKeyEnvName: model.auth?.apiKeyEnvName
 			},
 			overrides: {
 				requestHeaders: model.overrides?.hasOwnProperty('requestHeaders') ? model.overrides.requestHeaders : {},
