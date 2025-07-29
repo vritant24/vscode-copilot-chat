@@ -41,9 +41,22 @@ export type IModelConfig = {
 		};
 	};
 	url: string;
-	apiKeyEnvName: string;
-	useBearerAuth: boolean; // If false, the `api-key` header will be used instead of the `Authorization` header. Default is true.
+	auth: {
+		/**
+		 * Use Bearer token for authentication
+		 */
+		useBearerHeader: boolean;
+		/**
+		 * Use API key for authentication
+		 */
+		useApiKeyHeader: boolean;
+		/**
+		 * The environment variable name for the API key
+		 */
+		apiKeyEnvName?: string;
+	};
 	overrides: {
+		requestHeaders: Record<string, string>;
 		// If any value is set to null, it will be deleted from the request body
 		// if the value is undefined, it will not override any existing value in the request body
 		// if the value is set, it will override the existing value in the request body
@@ -116,22 +129,35 @@ export class OpenAICompatibleTestEndpoint extends ChatEndpoint {
 	}
 
 	public getExtraHeaders(): Record<string, string> {
-		const apiKey = process.env[this.modelConfig.apiKeyEnvName];
-		if (!apiKey) {
-			throw new Error(`API key environment variable ${this.modelConfig.apiKeyEnvName} is not set`);
-		}
-
-		if (this.modelConfig.useBearerAuth) {
-			return {
-				"Authorization": `Bearer ${apiKey}`,
-				"Content-Type": "application/json",
-			};
-		}
-
-		return {
-			"api-key": apiKey,
-			"Content-Type": "application/json",
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json"
 		};
+
+		if (this.modelConfig.auth.useBearerHeader || this.modelConfig.auth.useApiKeyHeader) {
+			if (!this.modelConfig.auth.apiKeyEnvName) {
+				throw new Error('API key environment variable name is not set in the model configuration');
+			}
+			const apiKey = process.env[this.modelConfig.auth.apiKeyEnvName];
+			if (!apiKey) {
+				throw new Error(`API key environment variable ${this.modelConfig.auth.apiKeyEnvName} is not set`);
+			}
+
+			if (this.modelConfig.auth.useBearerHeader) {
+				headers["Authorization"] = `Bearer ${apiKey}`;
+			}
+
+			if (this.modelConfig.auth.useApiKeyHeader) {
+				headers["api-key"] = apiKey;
+			}
+		}
+
+		if (this.modelConfig.overrides.requestHeaders) {
+			Object.entries(this.modelConfig.overrides.requestHeaders).forEach(([key, value]) => {
+				headers[key] = value;
+			});
+		}
+
+		return headers;
 	}
 
 	override interceptBody(body: IEndpointBody | undefined): void {

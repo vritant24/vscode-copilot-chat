@@ -824,9 +824,13 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 				}
 			},
 			"url": "<endpoint URL>",
-			"apiKeyEnvName": "<environment variable name for API key>",
-			"useBearerAuth"?: <boolean>, // optional, defaults to true. If false, uses api-key header instead of Authorization header
+			"auth?": {
+				"useBearerHeader": <boolean>, // Use Bearer token for authentication. Defaults to false
+				"useApiKeyHeader": <boolean>, // Use API key for authentication. Defaults to false
+				"apiKeyEnvName"?: "<environment variable name for API key>"
+			},
 			"overrides"?: {
+				"requestHeaders"?: { "<header name>": "<header value>" }, // optional, custom request headers
 				"temperature"?: <number> | null, // optional, if null removes from request body
 				"top_p"?: <number> | null, // optional, if null removes from request body
 				"snippy"?: <boolean> | null, // optional, if null removes from request body
@@ -880,13 +884,20 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 			checkProperty(model.capabilities.limits, 'max_context_window_tokens', 'number', true);
 		}
 		checkProperty(model, 'url', 'string');
-		checkProperty(model, 'apiKeyEnvName', 'string');
-		checkProperty(model, 'useBearerAuth', 'boolean', true);
+		checkProperty(model, 'auth', 'object', true);
+		if (model.auth) {
+			checkProperty(model.auth, 'useBearerHeader', 'boolean', true);
+			checkProperty(model.auth, 'useApiKeyHeader', 'boolean', true);
+			checkProperty(model.auth, 'apiKeyEnvName', 'string', true);
+		}
 		checkProperty(model, 'overrides', 'object', true);
 
 		// Validate overrides object if present
 		if (model.overrides) {
 			const overrides = model.overrides;
+			if ('requestHeaders' in overrides && typeof overrides.requestHeaders !== 'object') {
+				throw new Error(`Property 'overrides.requestHeaders' in model configuration file ${resolvedModelConfigFilePath} must be an object`);
+			}
 			if ('temperature' in overrides && overrides.temperature !== null && typeof overrides.temperature !== 'number') {
 				throw new Error(`Property 'overrides.temperature' in model configuration file ${resolvedModelConfigFilePath} must be a number or null`);
 			}
@@ -927,15 +938,19 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 				}
 			},
 			url: model.url,
-			apiKeyEnvName: model.apiKeyEnvName,
-			useBearerAuth: model.useBearerAuth ?? true,
+			auth: {
+				useBearerHeader: model.auth.useBearerHeader ?? false,
+				useApiKeyHeader: model.auth.useApiKeyHeader ?? false,
+				apiKeyEnvName: model.auth.apiKeyEnvName
+			},
 			overrides: {
-				temperature: model.overrides ? (model.overrides.hasOwnProperty('temperature') ? model.overrides.temperature : undefined) : undefined,
-				top_p: model.overrides ? (model.overrides.hasOwnProperty('top_p') ? model.overrides.top_p : undefined) : undefined,
-				snippy: model.overrides ? (model.overrides.hasOwnProperty('snippy') ? model.overrides.snippy : undefined) : undefined,
-				max_tokens: model.overrides ? (model.overrides.hasOwnProperty('max_tokens') ? model.overrides.max_tokens : undefined) : undefined,
-				max_completion_tokens: model.overrides ? (model.overrides.hasOwnProperty('max_completion_tokens') ? model.overrides.max_completion_tokens : undefined) : undefined,
-				intent: model.overrides ? (model.overrides.hasOwnProperty('intent') ? model.overrides.intent : undefined) : undefined
+				requestHeaders: model.overrides?.hasOwnProperty('requestHeaders') ? model.overrides.requestHeaders : {},
+				temperature: model.overrides?.hasOwnProperty('temperature') ? model.overrides.temperature : undefined,
+				top_p: model.overrides?.hasOwnProperty('top_p') ? model.overrides.top_p : undefined,
+				snippy: model.overrides?.hasOwnProperty('snippy') ? model.overrides.snippy : undefined,
+				max_tokens: model.overrides?.hasOwnProperty('max_tokens') ? model.overrides.max_tokens : undefined,
+				max_completion_tokens: model.overrides?.hasOwnProperty('max_completion_tokens') ? model.overrides.max_completion_tokens : undefined,
+				intent: model.overrides?.hasOwnProperty('intent') ? model.overrides.intent : undefined
 			}
 		});
 	}
