@@ -809,6 +809,7 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 			"version": "<model version>",
 			"type": "<model type>", // 'openai' or 'azureOpenai'
 			"useDeveloperRole": <boolean>, // optional, defaults to false
+			"url": "<endpoint URL>",
 			"capabilities": {
 				"supports"?: {
 					"parallel_tool_calls"?: <boolean>,
@@ -823,7 +824,6 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 					"max_context_window_tokens"?: <number>
 				}
 			},
-			"url": "<endpoint URL>",
 			"auth?": {
 				"useBearerHeader": <boolean>, // Use Bearer token for authentication. Defaults to false
 				"useApiKeyHeader": <boolean>, // Use API key for authentication. Defaults to false
@@ -843,13 +843,18 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 	```
 	*/
 
-	const checkProperty = (obj: any, prop: string, type: 'string' | 'boolean' | 'number' | 'object', optional?: boolean) => {
+	const checkProperty = (obj: any, prop: string, type: 'string' | 'boolean' | 'number' | 'object', optional?: boolean, nullable?: boolean) => {
 		if (!(prop in obj)) {
 			if (optional) {
 				return;
 			}
 			throw new Error(`Missing property '${prop}' in model configuration file ${resolvedModelConfigFilePath}`);
 		}
+
+		if (nullable && obj[prop] === null) {
+			return;
+		}
+
 		if (typeof obj[prop] !== type) {
 			throw new Error(`Property '${prop}' in model configuration file ${resolvedModelConfigFilePath} must be of type '${type}', but got '${typeof obj[prop]}'`);
 		}
@@ -868,6 +873,8 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 			throw new Error(`Model type '${model.type}' is not supported. Only 'openai' and 'azureOpenai' are allowed.`);
 		}
 		checkProperty(model, 'useDeveloperRole', 'boolean', true);
+		checkProperty(model, 'url', 'string');
+
 		checkProperty(model, 'capabilities', 'object');
 		checkProperty(model.capabilities, 'supports', 'object', true);
 		if (model.capabilities.supports) {
@@ -877,52 +884,40 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 			checkProperty(model.capabilities.supports, 'vision', 'boolean', true);
 			checkProperty(model.capabilities.supports, 'prediction', 'boolean', true);
 		}
+
 		checkProperty(model.capabilities, 'limits', 'object', true);
 		if (model.capabilities.limits) {
 			checkProperty(model.capabilities.limits, 'max_prompt_tokens', 'number', true);
 			checkProperty(model.capabilities.limits, 'max_output_tokens', 'number', true);
 			checkProperty(model.capabilities.limits, 'max_context_window_tokens', 'number', true);
 		}
-		checkProperty(model, 'url', 'string');
+
 		checkProperty(model, 'auth', 'object', true);
 		if (model.auth) {
 			checkProperty(model.auth, 'useBearerHeader', 'boolean', true);
 			checkProperty(model.auth, 'useApiKeyHeader', 'boolean', true);
 			checkProperty(model.auth, 'apiKeyEnvName', 'string', true);
 		}
-		checkProperty(model, 'overrides', 'object', true);
 
-		// Validate overrides object if present
+		checkProperty(model, 'overrides', 'object', true);
 		if (model.overrides) {
 			const overrides = model.overrides;
-			if ('requestHeaders' in overrides && typeof overrides.requestHeaders !== 'object') {
-				throw new Error(`Property 'overrides.requestHeaders' in model configuration file ${resolvedModelConfigFilePath} must be an object`);
-			}
-			if ('temperature' in overrides && overrides.temperature !== null && typeof overrides.temperature !== 'number') {
-				throw new Error(`Property 'overrides.temperature' in model configuration file ${resolvedModelConfigFilePath} must be a number or null`);
-			}
-			if ('top_p' in overrides && overrides.top_p !== null && typeof overrides.top_p !== 'number') {
-				throw new Error(`Property 'overrides.top_p' in model configuration file ${resolvedModelConfigFilePath} must be a number or null`);
-			}
-			if ('snippy' in overrides && overrides.snippy !== null && typeof overrides.snippy !== 'boolean') {
-				throw new Error(`Property 'overrides.snippy' in model configuration file ${resolvedModelConfigFilePath} must be a boolean or null`);
-			}
-			if ('max_tokens' in overrides && overrides.max_tokens !== null && typeof overrides.max_tokens !== 'number') {
-				throw new Error(`Property 'overrides.max_tokens' in model configuration file ${resolvedModelConfigFilePath} must be a number or null`);
-			}
-			if ('max_completion_tokens' in overrides && overrides.max_completion_tokens !== null && typeof overrides.max_completion_tokens !== 'number') {
-				throw new Error(`Property 'overrides.max_completion_tokens' in model configuration file ${resolvedModelConfigFilePath} must be a number or null`);
-			}
-			if ('intent' in overrides && overrides.intent !== null && typeof overrides.intent !== 'boolean') {
-				throw new Error(`Property 'overrides.intent' in model configuration file ${resolvedModelConfigFilePath} must be a boolean or null`);
-			}
+			checkProperty(overrides, 'requestHeaders', 'object', true, true);
+			checkProperty(overrides, 'temperature', 'number', true, true);
+			checkProperty(overrides, 'top_p', 'number', true, true);
+			checkProperty(overrides, 'snippy', 'boolean', true, true);
+			checkProperty(overrides, 'intent', 'boolean', true, true);
+			checkProperty(overrides, 'max_tokens', 'number', true, true);
+			checkProperty(overrides, 'max_completion_tokens', 'number', true, true);
 		}
+
 		modelConfigs.push({
 			id: modelId,
 			name: model.name,
 			version: model.version,
 			type: model.type,
 			useDeveloperRole: model.useDeveloperRole ?? false,
+			url: model.url,
 			capabilities: {
 				supports: {
 					parallel_tool_calls: model.capabilities.supports?.parallel_tool_calls ?? false,
@@ -937,7 +932,6 @@ function parseModelConfigFile(modelConfigFilePath: string): IModelConfig[] {
 					max_context_window_tokens: model.capabilities.limits?.max_context_window_tokens
 				}
 			},
-			url: model.url,
 			auth: {
 				useBearerHeader: model.auth.useBearerHeader ?? false,
 				useApiKeyHeader: model.auth.useApiKeyHeader ?? false,
