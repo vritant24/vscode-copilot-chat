@@ -22,7 +22,7 @@
 	"icon": "assets/copilot.png",
 	"pricing": "Trial",
 	"engines": {
-		"vscode": "^1.103.0-20250725",
+		"vscode": "^1.103.0-20250728",
 		"npm": ">=9.0.0",
 		"node": ">=22.14.0"
 	},
@@ -2619,6 +2619,14 @@
 						],
 						"description": "%github.copilot.config.newWorkspaceCreation.enabled%"
 					},
+					"github.copilot.chat.newWorkspace.useContext7": {
+						"type": "boolean",
+						"default": false,
+						"tags": [
+							"experimental"
+						],
+						"markdownDescription": "%github.copilot.config.newWorkspace.useContext7%"
+					},
 					"github.copilot.chat.agent.currentEditorContext.enabled": {
 						"type": "boolean",
 						"default": true,
@@ -2629,7 +2637,7 @@
 					},
 					"github.copilot.chat.customInstructionsInSystemMessage": {
 						"type": "boolean",
-						"default": false,
+						"default": true,
 						"tags": [
 							"experimental"
 						],
@@ -2661,13 +2669,15 @@
 						],
 						"description": "%github.copilot.config.summarizeAgentConversationHistory.enabled%"
 					},
-					"github.copilot.chat.virtualTools.enabled": {
-						"type": "boolean",
-						"default": false,
+					"github.copilot.chat.virtualTools.threshold": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 128,
+						"default": 128,
 						"tags": [
 							"experimental"
 						],
-						"description": "%github.copilot.config.virtualTools.enabled%"
+						"markdownDescription": "%github.copilot.config.virtualTools.threshold%"
 					},
 					"github.copilot.chat.azureModels": {
 						"type": "object",
@@ -2701,6 +2711,11 @@
 								"maxOutputTokens": {
 									"type": "number",
 									"description": "Maximum number of output tokens supported by the model"
+								},
+								"thinking": {
+									"type": "boolean",
+									"default": false,
+									"description": "Whether the model supports thinking capabilities"
 								}
 							},
 							"required": [
