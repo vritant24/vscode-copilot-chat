@@ -14,6 +14,7 @@ import { IDomainService } from '../../endpoint/common/domainService';
 import { IEnvService } from '../../env/common/envService';
 import { ITelemetrySender, ITelemetryUserConfig, TelemetryEventMeasurements, TelemetryEventProperties, TelemetryTrustedValue } from '../common/telemetry';
 import { TelemetryData, eventPropertiesToSimpleObject } from '../common/telemetryData';
+import { ITelemetryFileLogger } from './fileLogger';
 
 
 export class BaseGHTelemetrySender implements ITelemetrySender {
@@ -28,10 +29,11 @@ export class BaseGHTelemetrySender implements ITelemetrySender {
 		private readonly _telemetryConfig: ITelemetryUserConfig,
 		protected readonly _envService: IEnvService,
 		protected readonly _domainService: IDomainService,
-
+		private _fileLogger?: ITelemetryFileLogger
 	) {
 		this._processToken(tokenStore.copilotToken);
 		this._standardTelemetryLogger = this._createTelemetryLogger(false);
+
 		this._disposables.add(tokenStore.onDidStoreUpdate(() => {
 			const token = tokenStore.copilotToken;
 			this._processToken(token);
@@ -72,9 +74,13 @@ export class BaseGHTelemetrySender implements ITelemetrySender {
 	}
 
 	sendEnhancedTelemetryEvent(eventName: string, properties?: TelemetryEventProperties, measurements?: TelemetryEventMeasurements): void {
+		const data = this.markAsIssuedAndMakeReadyForSending(properties, measurements);
 		if (this._enhancedTelemetryLogger) {
-			this._enhancedTelemetryLogger?.logUsage(eventName, this.markAsIssuedAndMakeReadyForSending(properties, measurements));
+			this._enhancedTelemetryLogger?.logUsage(eventName, data);
 		}
+
+		// Also log to file logger
+		this._fileLogger?.logLine(`[${eventName}]: ${JSON.stringify(data)}`);
 	}
 
 	sendEnhancedTelemetryErrorEvent(eventName: string, properties?: TelemetryEventProperties, measurements?: TelemetryEventMeasurements): void {
@@ -127,6 +133,7 @@ export class BaseGHTelemetrySender implements ITelemetrySender {
 		if (this._enhancedTelemetryLogger) {
 			this._enhancedTelemetryLogger.dispose();
 		}
+		this._fileLogger?.dispose();
 	}
 
 }

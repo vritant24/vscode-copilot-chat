@@ -28,6 +28,7 @@ import { IGithubRepositoryService } from '../../../platform/github/common/github
 import { GithubRepositoryService } from '../../../platform/github/node/githubRepositoryService';
 import { IIgnoreService } from '../../../platform/ignore/common/ignoreService';
 import { VsCodeIgnoreService } from '../../../platform/ignore/vscode-node/ignoreService';
+import { ILanguageContextProviderService } from '../../../platform/languageContextProvider/common/languageContextProviderService';
 import { ILanguageContextService } from '../../../platform/languageServer/common/languageContextService';
 import { ICompletionsFetchService } from '../../../platform/nesFetch/common/completionsFetchService';
 import { CompletionsFetchService } from '../../../platform/nesFetch/node/completionsFetchServiceImpl';
@@ -48,7 +49,6 @@ import { ISearchService } from '../../../platform/search/common/searchService';
 import { SearchServiceImpl } from '../../../platform/search/vscode-node/searchServiceImpl';
 import { ISettingsEditorSearchService } from '../../../platform/settingsEditor/common/settingsEditorSearchService';
 import { IExperimentationService, NullExperimentationService } from '../../../platform/telemetry/common/nullExperimentationService';
-import { NullTelemetryService } from '../../../platform/telemetry/common/nullTelemetryService';
 import { ITelemetryService, ITelemetryUserConfig, TelemetryUserConfigImpl } from '../../../platform/telemetry/common/telemetry';
 import { APP_INSIGHTS_KEY_ENHANCED, APP_INSIGHTS_KEY_STANDARD } from '../../../platform/telemetry/node/azureInsights';
 import { MicrosoftExperimentationService } from '../../../platform/telemetry/vscode-node/microsoftExperimentationService';
@@ -97,7 +97,6 @@ import { LanguageContextServiceImpl } from '../../typescriptContext/vscode-node/
 import { IWorkspaceListenerService } from '../../workspaceRecorder/common/workspaceListenerService';
 import { WorkspacListenerService } from '../../workspaceRecorder/vscode-node/workspaceListenerService';
 import { registerServices as registerCommonServices } from '../vscode/services';
-import { ILanguageContextProviderService } from '../../../platform/languageContextProvider/common/languageContextProviderService';
 
 // ###########################################################################################
 // ###                                                                                     ###
@@ -195,20 +194,27 @@ function setupMSFTExperimentationService(builder: IInstantiationServiceBuilder, 
 }
 
 function setupTelemetry(builder: IInstantiationServiceBuilder, extensionContext: ExtensionContext, internalAIKey: string, internalLargeEventAIKey: string, externalAIKey: string) {
-
-	if (ExtensionMode.Production === extensionContext.extensionMode) {
-		builder.define(ITelemetryService, new SyncDescriptor(TelemetryService, [
-			extensionContext.extension.packageJSON.name,
-			internalAIKey,
-			internalLargeEventAIKey,
-			externalAIKey,
-			APP_INSIGHTS_KEY_STANDARD,
-			APP_INSIGHTS_KEY_ENHANCED,
-		]));
-	} else {
-		// If we're developing or testing we don't want telemetry to be sent, so we turn it off
-		builder.define(ITelemetryService, new NullTelemetryService());
-	}
+	builder.define(ITelemetryService, new SyncDescriptor(TelemetryService, [
+		extensionContext.extension.packageJSON.name,
+		internalAIKey,
+		internalLargeEventAIKey,
+		externalAIKey,
+		APP_INSIGHTS_KEY_STANDARD,
+		APP_INSIGHTS_KEY_ENHANCED,
+	]));
+	// if (ExtensionMode.Production === extensionContext.extensionMode) {
+	// 	builder.define(ITelemetryService, new SyncDescriptor(TelemetryService, [
+	// 		extensionContext.extension.packageJSON.name,
+	// 		internalAIKey,
+	// 		internalLargeEventAIKey,
+	// 		externalAIKey,
+	// 		APP_INSIGHTS_KEY_STANDARD,
+	// 		APP_INSIGHTS_KEY_ENHANCED,
+	// 	]));
+	// } else {
+	// 	// If we're developing or testing we don't want telemetry to be sent, so we turn it off
+	// 	builder.define(ITelemetryService, new NullTelemetryService());
+	// }
 
 	setupMSFTExperimentationService(builder, extensionContext);
 }

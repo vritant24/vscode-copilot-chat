@@ -9,6 +9,7 @@ import { IConfigurationService } from '../../configuration/common/configurationS
 import { ICAPIClientService } from '../../endpoint/common/capiClient';
 import { IDomainService } from '../../endpoint/common/domainService';
 import { IEnvService } from '../../env/common/envService';
+import { ITelemetryFileLogger } from '../common/fileLogger';
 import { BaseGHTelemetrySender } from '../common/ghTelemetrySender';
 import { ITelemetryUserConfig } from '../common/telemetry';
 import { AzureInsightReporter } from '../node/azureInsightsReporter';
@@ -23,7 +24,8 @@ export class GitHubTelemetrySender extends BaseGHTelemetrySender {
 		extensionName: string,
 		standardTelemetryAIKey: string,
 		enhancedTelemetryAIKey: string,
-		tokenStore: ICopilotTokenStore
+		tokenStore: ICopilotTokenStore,
+		nodeFileLogger: ITelemetryFileLogger
 	) {
 		const telemeryLoggerFactory = (enhanced: boolean) => {
 			if (enhanced) {
@@ -32,6 +34,6 @@ export class GitHubTelemetrySender extends BaseGHTelemetrySender {
 				return env.createTelemetryLogger(new AzureInsightReporter(capiClientService, envService, extensionName, standardTelemetryAIKey), { ignoreBuiltInCommonProperties: true, ignoreUnhandledErrors: true });
 			}
 		};
-		super(tokenStore, telemeryLoggerFactory, configService, telemetryConfig, envService, domainService);
+		super(tokenStore, telemeryLoggerFactory, configService, telemetryConfig, envService, domainService, nodeFileLogger);
 	}
 }

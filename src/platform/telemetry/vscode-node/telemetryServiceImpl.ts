@@ -12,6 +12,7 @@ import { BaseTelemetryService } from '../common/baseTelemetryService';
 import { ITelemetryUserConfig } from '../common/telemetry';
 import { GitHubTelemetrySender } from './githubTelemetrySender';
 import { MicrosoftTelemetrySender } from './microsoftTelemetrySender';
+import { NodeTelemetryFileLogger } from './nodeFileLogger';
 
 export class TelemetryService extends BaseTelemetryService {
 	declare readonly _serviceBrand: undefined;
@@ -27,7 +28,7 @@ export class TelemetryService extends BaseTelemetryService {
 		@ICAPIClientService capiClientService: ICAPIClientService,
 		@IEnvService envService: IEnvService,
 		@ITelemetryUserConfig telemetryUserConfig: ITelemetryUserConfig,
-		@IDomainService domainService: IDomainService
+		@IDomainService domainService: IDomainService,
 	) {
 		const microsoftTelemetrySender = new MicrosoftTelemetrySender(internalMSFTAIKey, internalLargeEventMSFTAIKey, externalMSFTAIKey, tokenStore);
 		const ghTelemetrySender = new GitHubTelemetrySender(
@@ -39,7 +40,8 @@ export class TelemetryService extends BaseTelemetryService {
 			extensionName,
 			externalGHAIKey,
 			estrictedGHAIKey,
-			tokenStore
+			tokenStore,
+			new NodeTelemetryFileLogger()
 		);
 		super(tokenStore, microsoftTelemetrySender, ghTelemetrySender);
 	}
