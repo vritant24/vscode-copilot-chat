@@ -16,6 +16,7 @@ import { TextDocumentSnapshot } from '../../../../platform/editing/common/textDo
 import { IEndpointProvider } from '../../../../platform/endpoint/common/endpointProvider';
 import { ChatEndpoint } from '../../../../platform/endpoint/node/chatEndpoint';
 import { Proxy4oEndpoint } from '../../../../platform/endpoint/node/proxy4oEndpoint';
+import { ProxySmallInstantApplyEndpoint } from '../../../../platform/endpoint/node/proxySmallInstantApplyEndpoint';
 import { ILogService } from '../../../../platform/log/common/logService';
 import { IEditLogService } from '../../../../platform/multiFileEdit/common/editLogService';
 import { IMultiFileEditInternalTelemetryService } from '../../../../platform/multiFileEdit/common/multiFileEditQualityTelemetry';
@@ -277,6 +278,7 @@ export class CodeMapper {
 
 	static closingXmlTag = 'copilot-edited-file';
 	private gpt4oProxyEndpoint: Promise<Proxy4oEndpoint>;
+	private smallIAEndpoint: Promise<ProxySmallInstantApplyEndpoint>;
 
 	constructor(
 		@IEndpointProvider private readonly endpointProvider: IEndpointProvider,
@@ -293,6 +295,7 @@ export class CodeMapper {
 		@INotebookService private readonly notebookService: INotebookService
 	) {
 		this.gpt4oProxyEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(Proxy4oEndpoint));
+		this.smallIAEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(ProxySmallInstantApplyEndpoint));
 	}
 
 	public async mapCode(request: ICodeMapperRequestInput, resultStream: MappedEditsResponseStream, telemetryInfo: ICodeMapperTelemetryInfo | undefined, token: CancellationToken): Promise<CodeMapperOutcome | undefined> {
@@ -381,7 +384,7 @@ export class CodeMapper {
 	//#region Full file rewrite with speculation / predicted outputs
 
 	private async buildPrompt(request: ICodeMapperRequestInput, token: CancellationToken): Promise<IFullRewritePrompt> {
-		const endpoint = await this.gpt4oProxyEndpoint;
+		let endpoint: ChatEndpoint = await this.gpt4oProxyEndpoint;
 		const tokenizer = this.tokenizerProvider.acquireTokenizer(endpoint);
 		const requestId = generateUuid();
 
@@ -416,6 +419,10 @@ export class CodeMapper {
 			}
 			return prev + content;
 		}, '').trimEnd() + `\n\n\nThe resulting document:\n<${CodeMapper.closingXmlTag}>\n${fence}${languageIdToMDCodeBlockLang(languageId)}\n`;
+
+		if (prompt.length < 8000) {
+			endpoint = await this.smallIAEndpoint;
+		}
 
 		const promptTokenCount = await tokenizer.tokenLength(prompt);
 		const speculationTokenCount = await tokenizer.tokenLength(speculation);
@@ -536,7 +543,7 @@ export class CodeMapper {
 		}
 
 		const builtPrompt = await this.buildPrompt(request, token);
-		const { promptTokenCount, speculation, requestId } = builtPrompt;
+		const { promptTokenCount, speculation, requestId, endpoint } = builtPrompt;
 
 		// `prompt` includes the whole document, the codeblock and some prosa. we leave space
 		// for the document again and the whole codeblock (assuming it's all insertions)
@@ -548,7 +555,7 @@ export class CodeMapper {
 			return new CodeMapperRefusal();
 		}
 
-		const mapper = (await this.gpt4oProxyEndpoint).model;
+		const mapper = endpoint.model;
 		const outcomeCorrelationTelemetry: CodeMapperOutcomeTelemetry = {
 			requestId: String(telemetryInfo?.chatRequestId),
 			requestSource: String(telemetryInfo?.chatRequestSource),
@@ -614,10 +621,10 @@ export class CodeMapper {
 	}
 
 	private async fetchNativePredictedOutputs(request: ICodeMapperRequestInput, builtPrompt: IFullRewritePrompt, resultStream: MappedEditsResponseStream, outcomeTelemetry: CodeMapperOutcomeTelemetry, token: CancellationToken, applyEdits: boolean): Promise<CodeMapperOutcome | ISuccessfulRewriteInfo> {
-		const { messages, speculation, requestId } = builtPrompt;
+		const { messages, speculation, requestId, endpoint } = builtPrompt;
 		const startTime = Date.now();
 
-		const fetchResult = await this.fetchAndContinueOnLengthError(messages, speculation, request, resultStream, token, applyEdits);
+		const fetchResult = await this.fetchAndContinueOnLengthError(endpoint, messages, speculation, request, resultStream, token, applyEdits);
 
 		if (fetchResult.result.type !== ChatFetchResponseType.Success) {
 			this.logError(request, builtPrompt, { startTime, firstTokenTime: fetchResult.firstTokenTime, requestId }, outcomeTelemetry, builtPrompt.endpoint.model, fetchResult.result.type);
@@ -633,7 +640,7 @@ export class CodeMapper {
 		return res;
 	}
 
-	private async fetchAndContinueOnLengthError(promptMessages: Raw.ChatMessage[], speculation: string, request: ICodeMapperRequestInput, resultStream: MappedEditsResponseStream, token: CancellationToken, applyEdits: boolean): Promise<ISpeculationFetchResult> {
+	private async fetchAndContinueOnLengthError(endpoint: ChatEndpoint, promptMessages: Raw.ChatMessage[], speculation: string, request: ICodeMapperRequestInput, resultStream: MappedEditsResponseStream, token: CancellationToken, applyEdits: boolean): Promise<ISpeculationFetchResult> {
 		const allResponseText: string[] = [];
 		let responseLength = 0;
 		let firstTokenTime: number = -1;
@@ -648,7 +655,6 @@ export class CodeMapper {
 		const fetchStreamSource = new FetchStreamSource();
 		const textStream = fetchStreamSource.stream.map((part) => part.delta.text);
 
-		const endpoint = await this.gpt4oProxyEndpoint;
 		let processPromise: Promise<unknown> | undefined;
 		if (applyEdits) {
 			processPromise = existingDocument instanceof NotebookDocumentSnapshot

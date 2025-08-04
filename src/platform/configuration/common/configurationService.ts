@@ -512,6 +512,7 @@ export const enum CHAT_MODEL {
 	CUSTOM_NES = 'custom-nes',
 	XTAB_4O_MINI_FINETUNED = 'xtab-4o-mini-finetuned',
 	GPT4OPROXY = 'gpt-4o-instant-apply-full-ft-v66',
+	SMALL_INSTANT_APPLY = 'gpt-4o-instant-apply-full-ft-v66-short',
 	CLAUDE_SONNET = 'claude-3.5-sonnet',
 	CLAUDE_37_SONNET = 'claude-3.7-sonnet',
 	DEEPSEEK_CHAT = 'deepseek-chat',
