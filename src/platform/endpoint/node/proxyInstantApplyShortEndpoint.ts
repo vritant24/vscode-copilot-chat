@@ -16,7 +16,7 @@ import { ICAPIClientService } from '../common/capiClient';
 import { IDomainService } from '../common/domainService';
 import { Proxy4oEndpoint } from './proxy4oEndpoint';
 
-export class ProxySmallInstantApplyEndpoint extends Proxy4oEndpoint {
+export class ProxyInstantApplyShortEndpoint extends Proxy4oEndpoint {
 
 	constructor(
 		@IDomainService domainService: IDomainService,

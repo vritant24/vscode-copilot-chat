@@ -17,7 +17,7 @@ import { TextDocumentSnapshot } from '../../../../platform/editing/common/textDo
 import { IEndpointProvider } from '../../../../platform/endpoint/common/endpointProvider';
 import { ChatEndpoint } from '../../../../platform/endpoint/node/chatEndpoint';
 import { Proxy4oEndpoint } from '../../../../platform/endpoint/node/proxy4oEndpoint';
-import { ProxySmallInstantApplyEndpoint } from '../../../../platform/endpoint/node/proxySmallInstantApplyEndpoint';
+import { ProxyInstantApplyShortEndpoint } from '../../../../platform/endpoint/node/proxyInstantApplyShortEndpoint';
 import { ILogService } from '../../../../platform/log/common/logService';
 import { IEditLogService } from '../../../../platform/multiFileEdit/common/editLogService';
 import { IMultiFileEditInternalTelemetryService } from '../../../../platform/multiFileEdit/common/multiFileEditQualityTelemetry';
@@ -280,7 +280,7 @@ export class CodeMapper {
 
 	static closingXmlTag = 'copilot-edited-file';
 	private gpt4oProxyEndpoint: Promise<Proxy4oEndpoint>;
-	private smallIAEndpoint: Promise<ProxySmallInstantApplyEndpoint>;
+	private shortIAEndpoint: Promise<ProxyInstantApplyShortEndpoint>;
 	private shortContextLimit: number;
 
 	constructor(
@@ -299,7 +299,7 @@ export class CodeMapper {
 		@IConfigurationService configurationService: IConfigurationService,
 	) {
 		this.gpt4oProxyEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(Proxy4oEndpoint, undefined));
-		this.smallIAEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(ProxySmallInstantApplyEndpoint));
+		this.shortIAEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(ProxyInstantApplyShortEndpoint));
 
 		this.shortContextLimit = configurationService.getExperimentBasedConfig<number>(ConfigKey.Internal.InstantApplyShortContextLimit, experimentationService) ?? 8000;
 	}
@@ -427,7 +427,7 @@ export class CodeMapper {
 		}, '').trimEnd() + `\n\n\nThe resulting document:\n<${CodeMapper.closingXmlTag}>\n${fence}${languageIdToMDCodeBlockLang(languageId)}\n`;
 
 		if (prompt.length < this.shortContextLimit) {
-			endpoint = await this.smallIAEndpoint;
+			endpoint = await this.shortIAEndpoint;
 		}
 
 		const promptTokenCount = await tokenizer.tokenLength(prompt);
