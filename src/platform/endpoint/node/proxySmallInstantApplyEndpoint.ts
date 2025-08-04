@@ -6,7 +6,7 @@
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
 import { IAuthenticationService } from '../../authentication/common/authentication';
 import { IChatMLFetcher } from '../../chat/common/chatMLFetcher';
-import { CHAT_MODEL, IConfigurationService } from '../../configuration/common/configurationService';
+import { CHAT_MODEL, ConfigKey, IConfigurationService } from '../../configuration/common/configurationService';
 import { IEnvService } from '../../env/common/envService';
 import { IFetcherService } from '../../networking/common/fetcherService';
 import { IExperimentationService } from '../../telemetry/common/nullExperimentationService';
@@ -31,8 +31,9 @@ export class ProxySmallInstantApplyEndpoint extends Proxy4oEndpoint {
 		@IConfigurationService configurationService: IConfigurationService,
 		@IExperimentationService experimentationService: IExperimentationService,
 	) {
+		const model = configurationService.getExperimentBasedConfig<string>(ConfigKey.Internal.InstantApplyShortModelName, experimentationService) ?? CHAT_MODEL.SHORT_INSTANT_APPLY;
 		super(
-			CHAT_MODEL.SMALL_INSTANT_APPLY,
+			model,
 			domainService,
 			capiClientService,
 			fetcherService,

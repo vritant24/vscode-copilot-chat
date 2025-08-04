@@ -10,6 +10,7 @@ import { IAuthenticationService } from '../../../../platform/authentication/comm
 import { FetchStreamSource, IResponsePart } from '../../../../platform/chat/common/chatMLFetcher';
 import { ChatFetchResponseType, ChatLocation, ChatResponse, getErrorDetailsFromChatFetchError, getFilteredMessage } from '../../../../platform/chat/common/commonTypes';
 import { getTextPart, toTextPart } from '../../../../platform/chat/common/globalStringUtils';
+import { ConfigKey, IConfigurationService } from '../../../../platform/configuration/common/configurationService';
 import { IDiffService } from '../../../../platform/diff/common/diffService';
 import { NotebookDocumentSnapshot } from '../../../../platform/editing/common/notebookDocumentSnapshot';
 import { TextDocumentSnapshot } from '../../../../platform/editing/common/textDocumentSnapshot';
@@ -51,6 +52,7 @@ import { EXISTING_CODE_MARKER } from '../panel/codeBlockFormattingRules';
 import { CodeMapperFullRewritePrompt, CodeMapperPatchRewritePrompt, CodeMapperPromptProps } from './codeMapperPrompt';
 import { ICodeMapperTelemetryInfo } from './codeMapperService';
 import { findEdit, getCodeBlock, iterateSectionsForResponse, Marker, Patch, Section } from './patchEditGeneration';
+
 
 
 export type ICodeMapperDocument = TextDocumentSnapshot | NotebookDocumentSnapshot;
@@ -279,6 +281,7 @@ export class CodeMapper {
 	static closingXmlTag = 'copilot-edited-file';
 	private gpt4oProxyEndpoint: Promise<Proxy4oEndpoint>;
 	private smallIAEndpoint: Promise<ProxySmallInstantApplyEndpoint>;
+	private shortContextLimit: number;
 
 	constructor(
 		@IEndpointProvider private readonly endpointProvider: IEndpointProvider,
@@ -292,10 +295,13 @@ export class CodeMapper {
 		@IMultiFileEditInternalTelemetryService private readonly multiFileEditInternalTelemetryService: IMultiFileEditInternalTelemetryService,
 		@IAlternativeNotebookContentEditGenerator private readonly alternativeNotebookEditGenerator: IAlternativeNotebookContentEditGenerator,
 		@IAuthenticationService private readonly authenticationService: IAuthenticationService,
-		@INotebookService private readonly notebookService: INotebookService
+		@INotebookService private readonly notebookService: INotebookService,
+		@IConfigurationService configurationService: IConfigurationService,
 	) {
 		this.gpt4oProxyEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(Proxy4oEndpoint, undefined));
 		this.smallIAEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(ProxySmallInstantApplyEndpoint));
+
+		this.shortContextLimit = configurationService.getExperimentBasedConfig<number>(ConfigKey.Internal.InstantApplyShortContextLimit, experimentationService) ?? 8000;
 	}
 
 	public async mapCode(request: ICodeMapperRequestInput, resultStream: MappedEditsResponseStream, telemetryInfo: ICodeMapperTelemetryInfo | undefined, token: CancellationToken): Promise<CodeMapperOutcome | undefined> {
@@ -420,7 +426,7 @@ export class CodeMapper {
 			return prev + content;
 		}, '').trimEnd() + `\n\n\nThe resulting document:\n<${CodeMapper.closingXmlTag}>\n${fence}${languageIdToMDCodeBlockLang(languageId)}\n`;
 
-		if (prompt.length < 8000) {
+		if (prompt.length < this.shortContextLimit) {
 			endpoint = await this.smallIAEndpoint;
 		}
 
