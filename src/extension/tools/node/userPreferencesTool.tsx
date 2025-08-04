@@ -57,7 +57,7 @@ class UserPreferenceUpdatePrompt extends PromptElement<IUserPreferenceUpdateProm
 class UpdateUserPreferencesTool implements ICopilotTool<IUpdateUserPreferencesToolParams> {
 
 	public static readonly toolName = ToolName.UpdateUserPreferences;
-	private readonly endpoint = this.instantiationService.createInstance(Proxy4oEndpoint);
+	private readonly endpoint = this.instantiationService.createInstance(Proxy4oEndpoint, undefined);
 
 	constructor(
 		@IVSCodeExtensionContext private readonly extensionContext: IVSCodeExtensionContext,
