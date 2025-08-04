@@ -3,24 +3,20 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { RequestType } from '@vscode/copilot-api';
-import { TokenizerType } from '../../../util/common/tokenizer';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
 import { IAuthenticationService } from '../../authentication/common/authentication';
 import { IChatMLFetcher } from '../../chat/common/chatMLFetcher';
-import { CHAT_MODEL } from '../../configuration/common/configurationService';
+import { CHAT_MODEL, IConfigurationService } from '../../configuration/common/configurationService';
 import { IEnvService } from '../../env/common/envService';
 import { IFetcherService } from '../../networking/common/fetcherService';
+import { IExperimentationService } from '../../telemetry/common/nullExperimentationService';
 import { ITelemetryService } from '../../telemetry/common/telemetry';
 import { ITokenizerProvider } from '../../tokenizer/node/tokenizer';
 import { ICAPIClientService } from '../common/capiClient';
 import { IDomainService } from '../common/domainService';
-import { IChatModelInformation } from '../common/endpointProvider';
-import { ChatEndpoint } from './chatEndpoint';
+import { Proxy4oEndpoint } from './proxy4oEndpoint';
 
-export class ProxySmallInstantApplyEndpoint extends ChatEndpoint {
-
-	_serviceBrand: undefined;
+export class ProxySmallInstantApplyEndpoint extends Proxy4oEndpoint {
 
 	constructor(
 		@IDomainService domainService: IDomainService,
@@ -28,32 +24,15 @@ export class ProxySmallInstantApplyEndpoint extends ChatEndpoint {
 		@IFetcherService fetcherService: IFetcherService,
 		@IEnvService envService: IEnvService,
 		@ITelemetryService telemetryService: ITelemetryService,
-		@IAuthenticationService private readonly authService: IAuthenticationService,
+		@IAuthenticationService authService: IAuthenticationService,
 		@IChatMLFetcher chatMLFetcher: IChatMLFetcher,
 		@ITokenizerProvider tokenizerProvider: ITokenizerProvider,
 		@IInstantiationService instantiationService: IInstantiationService,
+		@IConfigurationService configurationService: IConfigurationService,
+		@IExperimentationService experimentationService: IExperimentationService,
 	) {
-		const model = CHAT_MODEL.SMALL_INSTANT_APPLY;
-		const modelInfo: IChatModelInformation = {
-			id: model,
-			name: model,
-			version: 'unknown',
-			model_picker_enabled: false,
-			is_chat_default: false,
-			is_chat_fallback: false,
-			capabilities: {
-				type: 'chat',
-				family: model,
-				tokenizer: TokenizerType.O200K,
-				supports: { streaming: true, parallel_tool_calls: false, tool_calls: false, vision: false, prediction: true },
-				limits: {
-					max_prompt_tokens: 128000,
-					max_output_tokens: 16000,
-				}
-			}
-		};
 		super(
-			modelInfo,
+			CHAT_MODEL.SMALL_INSTANT_APPLY,
 			domainService,
 			capiClientService,
 			fetcherService,
@@ -62,20 +41,9 @@ export class ProxySmallInstantApplyEndpoint extends ChatEndpoint {
 			authService,
 			chatMLFetcher,
 			tokenizerProvider,
-			instantiationService
+			instantiationService,
+			configurationService,
+			experimentationService
 		);
-	}
-
-	public getExtraHeaders(): Record<string, string> {
-		const headers: Record<string, string> = {};
-		if (this.authService.speculativeDecodingEndpointToken) {
-			headers['Copilot-Edits-Session'] = this.authService.speculativeDecodingEndpointToken;
-		}
-		return headers;
-	}
-
-
-	override get urlOrRequestMetadata() {
-		return { type: RequestType.ProxyChatCompletions };
 	}
 }

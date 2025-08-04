@@ -294,7 +294,7 @@ export class CodeMapper {
 		@IAuthenticationService private readonly authenticationService: IAuthenticationService,
 		@INotebookService private readonly notebookService: INotebookService
 	) {
-		this.gpt4oProxyEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(Proxy4oEndpoint));
+		this.gpt4oProxyEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(Proxy4oEndpoint, undefined));
 		this.smallIAEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(ProxySmallInstantApplyEndpoint));
 	}
 
