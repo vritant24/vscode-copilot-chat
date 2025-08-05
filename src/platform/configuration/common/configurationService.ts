@@ -707,6 +707,7 @@ export namespace ConfigKey {
 		export const InstantApplyModelName = defineExpSetting<string>('chat.advanced.instantApply.modelName', 'gpt-4o-instant-apply-full-ft-v66', INTERNAL_RESTRICTED);
 		export const InstantApplyShortModelName = defineExpSetting<string>('chat.advanced.instantApply.shortContextModelName', CHAT_MODEL.SHORT_INSTANT_APPLY, INTERNAL);
 		export const InstantApplyShortContextLimit = defineExpSetting<number>('chat.advanced.instantApply.shortContextLimit', 8000, INTERNAL);
+		export const InstantApplySearchLength = defineExpSetting<number | undefined>('chat.advanced.instantApply.searchLength', undefined, INTERNAL);
 
 		export const EnableUserPreferences = defineSetting<boolean>('chat.advanced.enableUserPreferences', false, INTERNAL_RESTRICTED);
 

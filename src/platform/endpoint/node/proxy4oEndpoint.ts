@@ -22,6 +22,7 @@ import { ChatEndpoint } from './chatEndpoint';
 export class Proxy4oEndpoint extends ChatEndpoint {
 
 	_serviceBrand: undefined;
+	private readonly searchLength: number | undefined;
 
 	constructor(
 		@IDomainService domainService: IDomainService,
@@ -68,6 +69,8 @@ export class Proxy4oEndpoint extends ChatEndpoint {
 			tokenizerProvider,
 			instantiationService
 		);
+
+		this.searchLength = configurationService.getExperimentBasedConfig<number | undefined>(ConfigKey.Internal.InstantApplySearchLength, experimentationService) ?? undefined;
 	}
 
 	public getExtraHeaders(): Record<string, string> {
@@ -75,6 +78,11 @@ export class Proxy4oEndpoint extends ChatEndpoint {
 		if (this.authService.speculativeDecodingEndpointToken) {
 			headers['Copilot-Edits-Session'] = this.authService.speculativeDecodingEndpointToken;
 		}
+
+		if (this.searchLength) {
+			headers['x-ms-oai-ev3-predictor_search_length'] = String(this.searchLength);
+		}
+
 		return headers;
 	}
 
