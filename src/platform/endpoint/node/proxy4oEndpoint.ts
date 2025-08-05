@@ -24,7 +24,6 @@ export class Proxy4oEndpoint extends ChatEndpoint {
 	_serviceBrand: undefined;
 
 	constructor(
-		model: string | undefined,
 		@IDomainService domainService: IDomainService,
 		@ICAPIClientService capiClientService: ICAPIClientService,
 		@IFetcherService fetcherService: IFetcherService,
@@ -37,9 +36,8 @@ export class Proxy4oEndpoint extends ChatEndpoint {
 		@IConfigurationService configurationService: IConfigurationService,
 		@IExperimentationService experimentationService: IExperimentationService,
 	) {
-		if (!model) {
-			model = configurationService.getExperimentBasedConfig<string>(ConfigKey.Internal.InstantApplyModelName, experimentationService) ?? CHAT_MODEL.GPT4OPROXY;
-		}
+		const model = configurationService.getExperimentBasedConfig<string>(ConfigKey.Internal.InstantApplyModelName, experimentationService) ?? CHAT_MODEL.GPT4OPROXY;
+
 		const modelInfo: IChatModelInformation = {
 			id: model,
 			name: model,

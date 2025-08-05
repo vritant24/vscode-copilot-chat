@@ -298,7 +298,7 @@ export class CodeMapper {
 		@INotebookService private readonly notebookService: INotebookService,
 		@IConfigurationService configurationService: IConfigurationService,
 	) {
-		this.gpt4oProxyEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(Proxy4oEndpoint, undefined));
+		this.gpt4oProxyEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(Proxy4oEndpoint));
 		this.shortIAEndpoint = this.experimentationService.initializePromise.then(() => this.instantiationService.createInstance(ProxyInstantApplyShortEndpoint));
 
 		this.shortContextLimit = configurationService.getExperimentBasedConfig<number>(ConfigKey.Internal.InstantApplyShortContextLimit, experimentationService) ?? 8000;
