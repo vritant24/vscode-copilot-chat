@@ -75,7 +75,6 @@ export class ProxyInstantApplyShortEndpoint extends ChatEndpoint {
 		return headers;
 	}
 
-
 	override get urlOrRequestMetadata() {
 		return { type: RequestType.ProxyChatCompletions };
 	}

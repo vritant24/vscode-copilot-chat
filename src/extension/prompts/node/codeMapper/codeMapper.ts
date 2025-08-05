@@ -54,7 +54,6 @@ import { ICodeMapperTelemetryInfo } from './codeMapperService';
 import { findEdit, getCodeBlock, iterateSectionsForResponse, Marker, Patch, Section } from './patchEditGeneration';
 
 
-
 export type ICodeMapperDocument = TextDocumentSnapshot | NotebookDocumentSnapshot;
 
 export async function processFullRewriteNotebook(document: NotebookDocument, inputStream: string | AsyncIterable<LineOfText>, outputStream: MappedEditsResponseStream, alternativeNotebookEditGenerator: IAlternativeNotebookContentEditGenerator, telemetryOptions: NotebookEditGenerationTelemtryOptions, token: CancellationToken): Promise<void> {
