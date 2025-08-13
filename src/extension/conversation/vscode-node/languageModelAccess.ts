@@ -14,6 +14,8 @@ import { EmbeddingType, getWellKnownEmbeddingTypeInfo, IEmbeddingsComputer } fro
 import { AutoChatEndpoint, isAutoModeEnabled } from '../../../platform/endpoint/common/autoChatEndpoint';
 import { IAutomodeService } from '../../../platform/endpoint/common/automodeService';
 import { IEndpointProvider } from '../../../platform/endpoint/common/endpointProvider';
+import { CustomDataPartMimeTypes } from '../../../platform/endpoint/common/endpointTypes';
+import { encodeStatefulMarker } from '../../../platform/endpoint/common/statefulMarkerContainer';
 import { IEnvService } from '../../../platform/env/common/envService';
 import { IVSCodeExtensionContext } from '../../../platform/extContext/common/extensionContext';
 import { ILogService } from '../../../platform/log/common/logService';
@@ -116,7 +118,7 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 			const sanitizedModelName = endpoint.name.replace(/\(Preview\)/g, '').trim();
 			let modelDescription: string | undefined;
 			if (endpoint.model === AutoChatEndpoint.id) {
-				modelDescription = localize('languageModel.autoTooltip', 'Auto automatically selects the best model for your request based on current capacity. Auto is counted at a variable rate based on the model selected.');
+				modelDescription = localize('languageModel.autoTooltip', 'Auto selects the best model for your request based on capacity and performance. Counted at 0x-1x the request rate, depending on the model.');
 			} else if (endpoint.multiplier) {
 				modelDescription = localize('languageModel.costTooltip', '{0} ({1}) is counted at a {2}x rate.', sanitizedModelName, endpoint.version, endpoint.multiplier);
 			} else if (endpoint.isFallback && endpoint.multiplier === 0) {
@@ -373,7 +375,7 @@ export class CopilotLanguageModelWrapper extends Disposable {
 			{ type: 'function', function: { name: _options.tools[0].name } } :
 			undefined;
 
-		const result = await endpoint.makeChatRequest('copilotLanguageModelWrapper', messages, callback, token, ChatLocation.Other, { extensionId }, options, true, telemetryProperties, { intent: true });
+		const result = await endpoint.makeChatRequest('copilotLanguageModelWrapper', messages, callback, token, ChatLocation.Other, { extensionId }, options, true, telemetryProperties);
 
 		if (result.type !== ChatFetchResponseType.Success) {
 			if (result.type === ChatFetchResponseType.ExtensionBlocked) {
@@ -422,11 +424,20 @@ export class CopilotLanguageModelWrapper extends Disposable {
 				}
 			}
 			if (delta.thinking) {
-				// progress.report({ index, part: new vscode.LanguageModelThinkingPart(delta.thinking) });
+				const text = delta.thinking.text ?? '';
+				progress.report({ index, part: new vscode.LanguageModelThinkingPart(text, delta.thinking.id, delta.thinking.metadata) });
 
 				// @karthiknadig: remove this when LM API becomes available
 				this._thinkingDataService.update(index, delta.thinking);
 			}
+
+			if (delta.statefulMarker) {
+				progress.report({
+					index,
+					part: new vscode.LanguageModelDataPart(encodeStatefulMarker(endpoint.model, delta.statefulMarker), CustomDataPartMimeTypes.StatefulMarker)
+				});
+			}
+
 			return undefined;
 		};
 		return this._provideLanguageModelResponse(endpoint, messages, options, extensionId, finishCallback, token);
