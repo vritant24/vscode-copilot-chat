@@ -96,7 +96,6 @@ export interface IEndpointBody {
 	similarity?: number;
 	/** Code search: */
 	scoping_query?: string;
-	include_embeddings?: boolean;
 	/** Responses API: */
 	input?: readonly any[];
 	truncation?: 'auto' | 'disabled';
