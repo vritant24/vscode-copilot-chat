@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 import assert from 'assert';
+import * as fs from 'fs';
 import * as path from 'path';
 import type * as vscode from 'vscode';
 import { Intent } from '../../src/extension/common/constants';
@@ -26,11 +27,9 @@ import { ITestingServicesAccessor, TestingServiceCollection } from '../../src/pl
 import { IFile, isNotebook, SimulationWorkspace } from '../../src/platform/test/node/simulationWorkspace';
 import { ChatResponseStreamImpl } from '../../src/util/common/chatResponseStreamImpl';
 import { getLanguage, getLanguageForResource } from '../../src/util/common/languages';
-import { ChatRequestTurn, ChatResponseTurn, ChatResponseMarkdownPart } from '../../src/util/common/test/shims/chatTypes';
+import { ChatRequestTurn, ChatResponseMarkdownPart, ChatResponseTurn } from '../../src/util/common/test/shims/chatTypes';
 import { ExtHostNotebookDocumentData, NotebookRange } from '../../src/util/common/test/shims/notebookDocument';
 import { ExtHostDocumentData } from '../../src/util/common/test/shims/textDocument';
-import * as fs from 'fs';
-import * as path from 'path';
 import { CancellationToken } from '../../src/util/vs/base/common/cancellation';
 import { Event } from '../../src/util/vs/base/common/event';
 import { ResourceMap } from '../../src/util/vs/base/common/map';
@@ -39,7 +38,7 @@ import { commonPrefixLength, commonSuffixLength } from '../../src/util/vs/base/c
 import { URI } from '../../src/util/vs/base/common/uri';
 import { SyncDescriptor } from '../../src/util/vs/platform/instantiation/common/descriptors';
 import { IInstantiationService } from '../../src/util/vs/platform/instantiation/common/instantiation';
-import { ChatLocation, ChatRequest, ChatRequestEditorData, ChatResponseMarkdownPart, ChatResponseNotebookEditPart, ChatResponseTextEditPart, Diagnostic, DiagnosticRelatedInformation, Location, Range, Selection, TextEdit, Uri, WorkspaceEdit } from '../../src/vscodeTypes';
+import { ChatLocation, ChatRequest, ChatRequestEditorData, ChatResponseNotebookEditPart, ChatResponseTextEditPart, Diagnostic, DiagnosticRelatedInformation, Location, Range, Selection, TextEdit, Uri, WorkspaceEdit } from '../../src/vscodeTypes';
 import { SimulationExtHostToolsService } from '../base/extHostContext/simulationExtHostToolsService';
 import { SimulationWorkspaceExtHost } from '../base/extHostContext/simulationWorkspaceExtHost';
 import { SpyingChatMLFetcher } from '../base/spyingChatMLFetcher';
@@ -49,7 +48,7 @@ import { readBuiltinIntents } from '../intent/intentTest';
 import { getDiagnostics } from './diagnosticProviders';
 import { convertTestToVSCodeDiagnostics } from './diagnosticProviders/utils';
 import { SimulationLanguageFeaturesService } from './language/simulationLanguageFeatureService';
-import { IDiagnostic, IDiagnosticComparison, INLINE_CHANGED_DOC_TAG, INLINE_INITIAL_DOC_TAG, INLINE_STATE_TAG, INLINE_HISTORY_TAG, IRange, IWorkspaceState, IWorkspaceStateFile } from './shared/sharedTypes';
+import { IDiagnostic, IDiagnosticComparison, INLINE_CHANGED_DOC_TAG, INLINE_HISTORY_TAG, INLINE_INITIAL_DOC_TAG, INLINE_STATE_TAG, IRange, IWorkspaceState, IWorkspaceStateFile } from './shared/sharedTypes';
 import { DiagnosticProviderId, EditTestStrategy, IDeserializedWorkspaceStateBasedScenario, IInlineEdit, IOutcome, IScenario, IScenarioDiagnostic, IScenarioQuery, OutcomeAnnotation } from './types';
 
 export type SimulationWorkspaceInput = { files: IFile[]; workspaceFolders?: Uri[] } | { workspaceState: IDeserializedWorkspaceState };
@@ -77,17 +76,17 @@ export interface ITrajectoryCollection {
 
 export function loadTurnIndexedTrajectory(baseDir: string, instanceId: string, maxTurns: number = 50): ITrajectoryData | undefined {
 	const history: ITrajectoryTurn[] = [];
-	
+
 	// Try to load turn files in order
 	for (let turnIndex = 0; turnIndex < maxTurns; turnIndex++) {
 		const turnFileName = `history-turn-${turnIndex.toString().padStart(3, '0')}.txt`;
 		const turnFilePath = path.join(baseDir, turnFileName);
-		
+
 		try {
 			if (fs.existsSync(turnFilePath)) {
 				const turnData = fs.readFileSync(turnFilePath, 'utf8');
 				const parsedTurn = JSON.parse(turnData);
-				
+
 				// Verify this is the turn we expect and for the right instance
 				if (parsedTurn.turnIndex === turnIndex && parsedTurn.instanceId === instanceId) {
 					// Add all turns from this file (should be 2: request + response)
@@ -102,11 +101,11 @@ export function loadTurnIndexedTrajectory(baseDir: string, instanceId: string, m
 			break;
 		}
 	}
-	
+
 	if (history.length === 0) {
 		return undefined;
 	}
-	
+
 	return {
 		instance_id: instanceId,
 		description: `Reconstructed trajectory from ${history.length / 2} turns`,
@@ -116,7 +115,7 @@ export function loadTurnIndexedTrajectory(baseDir: string, instanceId: string, m
 
 export function convertTrajectoryToHistory(trajectory: ITrajectoryData): (ChatRequestTurn | ChatResponseTurn)[] {
 	const history: (ChatRequestTurn | ChatResponseTurn)[] = [];
-	
+
 	for (const turn of trajectory.history) {
 		if (turn.type === 'request') {
 			history.push(new ChatRequestTurn(
@@ -141,7 +140,7 @@ export function convertTrajectoryToHistory(trajectory: ITrajectoryData): (ChatRe
 			));
 		}
 	}
-	
+
 	return history;
 }
 
@@ -167,7 +166,7 @@ export async function simulateInlineChatWithTrajectory(
 	if (!trajectoryData) {
 		throw new Error(`Trajectory with instance_id '${instanceId}' not found in ${trajectoryFilePath}`);
 	}
-	
+
 	return simulateInlineChatWithStrategy(strategy, testingServiceCollection, scenario, trajectoryData);
 }
 
@@ -183,7 +182,7 @@ export async function simulateInlineChatWithTurnIndexedTrajectory(
 	if (!trajectoryData) {
 		throw new Error(`Turn-indexed trajectory for instance_id '${instanceId}' not found in ${baseDir}`);
 	}
-	
+
 	console.log(`Loaded trajectory with ${trajectoryData.history.length} turns from ${baseDir}`);
 	return simulateInlineChatWithStrategy(strategy, testingServiceCollection, scenario, trajectoryData);
 }
@@ -199,7 +198,7 @@ export async function simulateInlineChatAndSaveTurnIndexedHistory(
 		instanceId,
 		description: description || `Generated turn-indexed history for ${instanceId}`
 	};
-	
+
 	return simulateInlineChatWithStrategy(strategy, testingServiceCollection, scenario, undefined, saveHistoryOptions);
 }
 
@@ -228,21 +227,20 @@ async function getNextTurnIndex(testRuntime: any): Promise<number> {
 	// Scan for existing turn files to find the highest index
 	let turnIndex = 0;
 	while (turnIndex < 50) {
-		const turnFileName = `history-turn-${turnIndex.toString().padStart(3, '0')}.txt`;
+		const turnFileName = `history-turn-${turnIndex.toString()}.txt`;
 		try {
 			// Try to read the file to see if it exists
 			await testRuntime.readFile(turnFileName, INLINE_HISTORY_TAG);
 			turnIndex++;
-            throw new Error(`File found.`);
+			throw new Error(`File found.`);
 			// If we got here, the file exists, so increment and check next
 		} catch (error) {
 			// File doesn't exist, so this is our next available index
-			if (turnIndex > 0)
-            {
-                throw error;
-            } else {
-                break;
-            }
+			if (turnIndex > 0) {
+				throw error;
+			} else {
+				break;
+			}
 		}
 	}
 	return turnIndex;
@@ -255,11 +253,7 @@ export function serializeHistoryForSaving(history: (ChatRequestTurn | ChatRespon
 				type: 'request' as const,
 				prompt: turn.prompt,
 				command: turn.command,
-				references: turn.references.map(ref => ({
-					id: (ref as any).id,
-					value: (ref as any).value,
-					...ref
-				})),
+				references: turn.references.map(ref => ({ ...ref })),
 				participant: turn.participant,
 				toolReferences: turn.toolReferences
 			};
@@ -427,7 +421,7 @@ export async function simulateEditingScenario(
 	assert(scenario.queries.length > 0, `Cannot simulate scenario with no queries`);
 	assert(isDeserializedWorkspaceStateBasedScenario(scenario) || scenario.files.length > 0, `Cannot simulate scenario with no files`);
 
-    const workspace = setupSimulationWorkspace(testingServiceCollection, scenario);
+	const workspace = setupSimulationWorkspace(testingServiceCollection, scenario);
 
 	await scenario.extraWorkspaceSetup?.(workspace);
 	const accessor = testingServiceCollection.createTestingAccessor();
@@ -440,14 +434,14 @@ export async function simulateEditingScenario(
 	let range: Range | undefined;
 	let isFirst = true;
 	// Determine the current turn index by checking existing files
-	let turnIndex = await getNextTurnIndex(testRuntime);
+	const turnIndex = await getNextTurnIndex(testRuntime);
 	const history: (ChatRequestTurn | ChatResponseTurn)[] = trajectoryData ? convertTrajectoryToHistory(trajectoryData) : [];
 	/**
 	 * A map from doc to relative path with initial contents which is populated right before modifying a document.
 	 */
 	const changedDocsInitialStates = new Map<vscode.TextDocument, Promise<IWorkspaceStateFile> | null>();
 
-    // run each query for the scenario
+	// run each query for the scenario
 	try {
 		const seenFiles: vscode.ChatPromptReference[] = [];
 
@@ -727,7 +721,7 @@ export async function simulateEditingScenario(
 			const result = await requestHandler.getResult();
 			history.push(new ChatRequestTurn(request.prompt, request.command, [...request.references], '', []));
 			history.push(new ChatResponseTurn([new ChatResponseMarkdownPart(markdownChunks.join(''))], result, ''));
-			
+
 			// Save this turn if we have save options and haven't exceeded turn 50
 			if (turnIndex < 50) {
 				const turnData = {
@@ -736,7 +730,7 @@ export async function simulateEditingScenario(
 					//description: saveHistoryOptions.description,
 					turns: serializeHistoryForSaving(history) // This will be just the current 2 turns
 				};
-				await testRuntime.writeFile(`history-turn-${turnIndex.toString().padStart(3, '0')}.txt`, JSON.stringify(turnData, undefined, 2), INLINE_HISTORY_TAG);
+				await testRuntime.writeFile(`history-turn-${turnIndex.toString()}.txt`, JSON.stringify(turnData, undefined, 2), INLINE_HISTORY_TAG);
 			}
 			let annotations = await responseProcessor?.postProcess(accessor, workspace, stream, result) ?? [];
 
