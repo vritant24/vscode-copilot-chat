@@ -9,7 +9,7 @@ import { IEmbeddingsCache } from '../../../../platform/embeddings/common/embeddi
 class ToolEmbeddingsCache implements IEmbeddingsCache {
 	public embeddingType: EmbeddingType = EmbeddingType.text3small_512;
 
-	private embeddings: Map<string, { embedding: EmbeddingVector }> | undefined = undefined;
+	private embeddings: { [key: string]: { embedding: EmbeddingVector } } | undefined = undefined;
 	async getCache<T = { [key: string]: { embedding: EmbeddingVector } }>(): Promise<T | undefined> {
 		return this.getEmbeddings() as Promise<T>;
 	}
@@ -18,13 +18,12 @@ class ToolEmbeddingsCache implements IEmbeddingsCache {
 		return Promise.resolve();
 	}
 
-	private async getEmbeddings(): Promise<Map<string, { embedding: EmbeddingVector }>> {
+	private async getEmbeddings(): Promise<{ [key: string]: { embedding: EmbeddingVector } }> {
 		if (!this.embeddings) {
 			const embeddingsFile = (await import('./allRoolEmbeddings'));
-			this.embeddings = new Map<string, { embedding: EmbeddingVector }>();
-
+			this.embeddings = {};
 			for (const [key, value] of Object.entries(embeddingsFile.embeddingsMap)) {
-				this.embeddings.set(key, { embedding: value });
+				this.embeddings[key] = { embedding: value };
 			}
 		}
 
