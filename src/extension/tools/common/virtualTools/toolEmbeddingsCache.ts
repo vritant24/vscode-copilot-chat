@@ -45,20 +45,20 @@ export class ToolEmbeddingsComputer {
 		}
 
 		const rankedEmbeddings = rankEmbeddings(queryEmbedding, tools, 10);
-		return rankedEmbeddings.map(x => x.value[0]);
+		return rankedEmbeddings.map(x => x.value);
 	}
 
 	private toolEmbeddingsArray: ReadonlyArray<readonly [string, Embedding]> | undefined = undefined;
 	private async getToolEmbeddingsArray(): Promise<ReadonlyArray<readonly [string, Embedding]>> {
 		if (!this.toolEmbeddingsArray) {
-			const arr = [];
+			const arr: [string, Embedding][] = [];
 			// Load the embeddings from the cache
 			const embeddings = await this.toolEmbeddingsCache.getCache();
 			if (embeddings) {
 				for (const [key, value] of Object.entries(embeddings)) {
-					arr.push([key, value.embedding]);
+					arr.push([key, { type: EmbeddingType.text3small_512, value: value.embedding }]);
 				}
-				this.toolEmbeddingsArray = arr as unknown as ReadonlyArray<readonly [string, Embedding]>;
+				this.toolEmbeddingsArray = arr as ReadonlyArray<readonly [string, Embedding]>;
 			} else {
 				this.toolEmbeddingsArray = [];
 			}
