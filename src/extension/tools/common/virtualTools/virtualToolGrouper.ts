@@ -88,9 +88,10 @@ export class VirtualToolGrouper implements IToolCategorization {
 			}
 		}
 
-		const res = await this._getPredictedTools(query, root.contents as LanguageModelToolInformation[], token);
-		console.info(`Predicted tools for query "${query}": ${res.map(t => t.name).join(', ')}`);
+		const predictedTools = await this._getPredictedTools(query, root.contents as LanguageModelToolInformation[], token);
+		console.info(`Predicted tools for query "${query}": ${predictedTools.map(t => t.name).join(', ')}`);
 
+		this._expandGroupsWithPredictedTools(root, predictedTools);
 		this._reExpandToolsToHitBudget(root);
 	}
 
@@ -116,6 +117,59 @@ export class VirtualToolGrouper implements IToolCategorization {
 		}
 
 		return [...seen.values()];
+	}
+
+	/**
+	 * Expands groups that contain predicted tools in priority order until the hard tool limit is reached.
+	 * Only expands groups containing tools from the predictedTools array, which is ordered from high to low priority.
+	 */
+	private _expandGroupsWithPredictedTools(root: VirtualTool, predictedTools: LanguageModelToolInformation[]): void {
+		if (predictedTools.length === 0) {
+			return;
+		}
+
+		let toolCount = Iterable.length(root.tools());
+
+		// Create a set of predicted tool names for fast lookup
+		const predictedToolNames = new Set(predictedTools.map(tool => tool.name));
+
+		// Get unexpanded virtual tools that contain predicted tools
+		const expandableGroupsWithPredictedTools = root.contents
+			.filter((t): t is VirtualTool => {
+				if (!(t instanceof VirtualTool) || t.isExpanded) {
+					return false;
+				}
+				// Check if this group contains any predicted tools
+				return t.contents.some(tool =>
+					'name' in tool && predictedToolNames.has(tool.name)
+				);
+			})
+			.sort((a, b) => {
+				// Sort by highest priority predicted tool in each group
+				const aMaxPriority = Math.min(...a.contents
+					.filter(tool => 'name' in tool && predictedToolNames.has(tool.name))
+					.map(tool => predictedTools.findIndex(pt => pt.name === tool.name))
+					.filter(index => index !== -1)
+				);
+				const bMaxPriority = Math.min(...b.contents
+					.filter(tool => 'name' in tool && predictedToolNames.has(tool.name))
+					.map(tool => predictedTools.findIndex(pt => pt.name === tool.name))
+					.filter(index => index !== -1)
+				);
+				return aMaxPriority - bMaxPriority; // Lower index = higher priority
+			});
+
+		// Expand groups in priority order until we hit the hard limit
+		for (const vtool of expandableGroupsWithPredictedTools) {
+			const nextCount = toolCount - 1 + vtool.contents.length;
+			if (nextCount > HARD_TOOL_LIMIT) {
+				break;
+			}
+
+			vtool.isExpanded = true;
+			vtool.metadata.preExpanded = true;
+			toolCount = nextCount;
+		}
 	}
 
 	/**
@@ -239,7 +293,7 @@ export class VirtualToolGrouper implements IToolCategorization {
 		const queryEmbeddingVector = queryEmbedding.values[0];
 
 		// get the top 10 tool embeddings
-		const toolEmbeddings = await this.toolEmbeddingsComputer.computeSimilarity(queryEmbeddingVector);
+		const toolEmbeddings = await this.toolEmbeddingsComputer.retrieveSimilarEmbeddings(queryEmbeddingVector, 10);
 		if (!toolEmbeddings) {
 			return [];
 		}

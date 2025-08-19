@@ -38,13 +38,13 @@ export class ToolEmbeddingsComputer {
 		this.toolEmbeddingsCache = new ToolEmbeddingsCache();
 	}
 
-	public async computeSimilarity(queryEmbedding: Embedding): Promise<string[]> {
+	public async retrieveSimilarEmbeddings(queryEmbedding: Embedding, count: number): Promise<string[]> {
 		const tools = await this.getToolEmbeddingsArray();
 		if (!tools || tools.length === 0) {
 			return [];
 		}
 
-		const rankedEmbeddings = rankEmbeddings(queryEmbedding, tools, 10);
+		const rankedEmbeddings = rankEmbeddings(queryEmbedding, tools, count);
 		return rankedEmbeddings.map(x => x.value);
 	}
 
