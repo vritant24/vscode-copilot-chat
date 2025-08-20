@@ -38,13 +38,19 @@ export class ToolEmbeddingsComputer {
 		this.toolEmbeddingsCache = new ToolEmbeddingsCache();
 	}
 
-	public async retrieveSimilarEmbeddings(queryEmbedding: Embedding, count: number): Promise<string[]> {
+	public async retrieveSimilarEmbeddingsForAvailableTools(queryEmbedding: Embedding, availableToolNames: Set<string>, count: number): Promise<string[]> {
 		const tools = await this.getToolEmbeddingsArray();
 		if (!tools || tools.length === 0) {
 			return [];
 		}
 
-		const rankedEmbeddings = rankEmbeddings(queryEmbedding, tools, count);
+		// Filter to only include available tools
+		const availableTools = tools.filter(([toolName]) => availableToolNames.has(toolName));
+		if (availableTools.length === 0) {
+			return [];
+		}
+
+		const rankedEmbeddings = rankEmbeddings(queryEmbedding, availableTools, count);
 		return rankedEmbeddings.map(x => x.value);
 	}
 

@@ -292,14 +292,18 @@ export class VirtualToolGrouper implements IToolCategorization {
 		}
 		const queryEmbeddingVector = queryEmbedding.values[0];
 
-		// get the top 10 tool embeddings
-		const toolEmbeddings = await this.toolEmbeddingsComputer.retrieveSimilarEmbeddings(queryEmbeddingVector, 10);
+		// get the top 10 tool embeddings, but only consider available tools
+		const availableToolNames = new Set(tools.map(tool => tool.name));
+		const toolEmbeddings = await this.toolEmbeddingsComputer.retrieveSimilarEmbeddingsForAvailableTools(queryEmbeddingVector, availableToolNames, 10);
 		if (!toolEmbeddings) {
 			return [];
 		}
 
-		// filter the tools by the top 10 tool embeddings
-		const predictedTools = tools.filter(tool => toolEmbeddings.includes(tool.name));
+		// filter the tools by the top 10 tool embeddings, maintaining order
+		const toolNameToTool = new Map(tools.map(tool => [tool.name, tool]));
+		const predictedTools = toolEmbeddings
+			.map((toolName: string) => toolNameToTool.get(toolName))
+			.filter((tool: LanguageModelToolInformation | undefined): tool is LanguageModelToolInformation => tool !== undefined);
 		return predictedTools;
 	}
 
