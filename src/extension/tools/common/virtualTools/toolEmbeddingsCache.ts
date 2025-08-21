@@ -20,10 +20,10 @@ class ToolEmbeddingsCache implements IEmbeddingsCache {
 
 	private async getEmbeddings(): Promise<{ [key: string]: { embedding: EmbeddingVector } }> {
 		if (!this.embeddings) {
-			const embeddingsFile = (await import('./allRoolEmbeddings'));
+			const embeddingsFile = (await import('./allRoolEmbeddings.json'));
 			this.embeddings = {};
-			for (const [key, value] of Object.entries(embeddingsFile.embeddingsMap)) {
-				this.embeddings[key] = { embedding: value };
+			for (const [key, value] of Object.entries(embeddingsFile.default)) {
+				this.embeddings[key] = { embedding: value as unknown as EmbeddingVector };
 			}
 		}
 
