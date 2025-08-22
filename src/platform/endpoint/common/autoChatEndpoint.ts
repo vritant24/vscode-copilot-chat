@@ -8,7 +8,7 @@ import { ChatMessage } from '@vscode/prompt-tsx/dist/base/output/rawTypes';
 import type { CancellationToken } from 'vscode';
 import { ITokenizer, TokenizerType } from '../../../util/common/tokenizer';
 import { AsyncIterableObject } from '../../../util/vs/base/common/async';
-import { IntentParams, Source } from '../../chat/common/chatMLFetcher';
+import { Source } from '../../chat/common/chatMLFetcher';
 import { ChatLocation, ChatResponse } from '../../chat/common/commonTypes';
 import { IEnvService } from '../../env/common/envService';
 import { ILogService } from '../../log/common/logService';
@@ -32,7 +32,6 @@ export class AutoChatEndpoint implements IChatEndpoint {
 	supportsVision: boolean = this._wrappedEndpoint.supportsVision;
 	supportsPrediction: boolean = this._wrappedEndpoint.supportsPrediction;
 	showInModelPicker: boolean = true;
-	supportsStatefulResponses: boolean = this._wrappedEndpoint.supportsStatefulResponses;
 	isPremium?: boolean | undefined = this._wrappedEndpoint.isPremium;
 	multiplier?: number | undefined = this._wrappedEndpoint.multiplier;
 	restrictedToSkus?: string[] | undefined = this._wrappedEndpoint.restrictedToSkus;
@@ -79,7 +78,7 @@ export class AutoChatEndpoint implements IChatEndpoint {
 		return this._wrappedEndpoint.makeChatRequest2(options, token);
 	}
 
-	async makeChatRequest(debugName: string, messages: ChatMessage[], finishedCb: FinishedCallback | undefined, token: CancellationToken, location: ChatLocation, source?: Source, requestOptions?: Omit<OptionalChatRequestParams, 'n'>, userInitiatedRequest?: boolean, telemetryProperties?: TelemetryProperties, intentParams?: IntentParams): Promise<ChatResponse> {
+	async makeChatRequest(debugName: string, messages: ChatMessage[], finishedCb: FinishedCallback | undefined, token: CancellationToken, location: ChatLocation, source?: Source, requestOptions?: Omit<OptionalChatRequestParams, 'n'>, userInitiatedRequest?: boolean, telemetryProperties?: TelemetryProperties): Promise<ChatResponse> {
 		return this.makeChatRequest2({
 			debugName,
 			messages,
@@ -89,7 +88,6 @@ export class AutoChatEndpoint implements IChatEndpoint {
 			requestOptions,
 			userInitiatedRequest,
 			telemetryProperties,
-			intentParams
 		}, token);
 	}
 }

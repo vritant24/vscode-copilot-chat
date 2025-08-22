@@ -16,6 +16,8 @@ import { IAuthenticationChatUpgradeService } from '../../authentication/common/a
 import { AuthenticationChatUpgradeService } from '../../authentication/common/authenticationUpgradeService';
 import { ICopilotTokenManager } from '../../authentication/common/copilotTokenManager';
 import { CopilotTokenStore, ICopilotTokenStore } from '../../authentication/common/copilotTokenStore';
+import { StaticGitHubAuthenticationService } from '../../authentication/common/staticGitHubAuthenticationService';
+import { getStaticGitHubToken } from '../../authentication/node/copilotTokenManager';
 import { SimulationTestCopilotTokenManager } from '../../authentication/test/node/simulationTestCopilotTokenManager';
 import { IChatAgentService } from '../../chat/common/chatAgents';
 import { IChatQuotaService } from '../../chat/common/chatQuotaService';
@@ -53,6 +55,7 @@ import { OctoKitService } from '../../github/common/octoKitServiceImpl';
 import { GithubRepositoryService } from '../../github/node/githubRepositoryService';
 import { IHeatmapService, nullHeatmapService } from '../../heatmap/common/heatmapService';
 import { IIgnoreService, NullIgnoreService } from '../../ignore/common/ignoreService';
+import { IImageService, nullImageService } from '../../image/common/imageService';
 import { IInteractiveSessionService } from '../../interactive/common/interactiveSessionService';
 import { ILanguageContextProviderService } from '../../languageContextProvider/common/languageContextProviderService';
 import { NullLanguageContextProviderService } from '../../languageContextProvider/common/nullLanguageContextProviderService';
@@ -92,7 +95,6 @@ import { IWorkspaceChunkSearchService, NullWorkspaceChunkSearchService } from '.
 import { TestExtensionsService } from '../common/testExtensionsService';
 import { MockExtensionContext } from './extensionContext';
 import { SnapshotSearchService, TestingTabsAndEditorsService } from './simulationWorkspaceServices';
-import { TestAuthenticationService } from './testAuthenticationService';
 import { TestChatAgentService } from './testChatAgentService';
 import { TestWorkbenchService } from './testWorkbenchService';
 import { TestWorkspaceService } from './testWorkspaceService';
@@ -195,7 +197,7 @@ export function _createBaselineServices(): TestingServiceCollection {
 	// Notifications from the monolith when fetching a token can trigger behaviour that require these objects.
 	testingServiceCollection.define(IUrlOpener, new SyncDescriptor(NullUrlOpener));
 	testingServiceCollection.define(ICopilotTokenManager, new SyncDescriptor(SimulationTestCopilotTokenManager));
-	testingServiceCollection.define(IAuthenticationService, new SyncDescriptor(TestAuthenticationService, [undefined]));
+	testingServiceCollection.define(IAuthenticationService, new SyncDescriptor(StaticGitHubAuthenticationService, [getStaticGitHubToken]));
 	testingServiceCollection.define(IHeaderContributors, new SyncDescriptor(HeaderContributors));
 
 	testingServiceCollection.define(IConversationOptions, new SyncDescriptor(class implements IConversationOptions {
@@ -255,6 +257,7 @@ export function createPlatformServices(): TestingServiceCollection {
 	testingServiceCollection.define(IRunCommandExecutionService, new SyncDescriptor(MockRunCommandExecutionService));
 	testingServiceCollection.define(INaiveChunkingService, new SyncDescriptor(NaiveChunkingService));
 	testingServiceCollection.define(IHeatmapService, nullHeatmapService);
+	testingServiceCollection.define(IImageService, nullImageService);
 	testingServiceCollection.define(ILanguageContextService, NullLanguageContextService);
 	testingServiceCollection.define(ILanguageContextProviderService, new SyncDescriptor(NullLanguageContextProviderService));
 	testingServiceCollection.define(ILanguageDiagnosticsService, new SyncDescriptor(TestLanguageDiagnosticsService));

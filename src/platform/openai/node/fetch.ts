@@ -8,7 +8,6 @@ import type { CancellationToken } from 'vscode';
 import { createRequestHMAC } from '../../../util/common/crypto';
 import { generateUuid } from '../../../util/vs/base/common/uuid';
 import { IAuthenticationService } from '../../authentication/common/authentication';
-import { IntentParams } from '../../chat/common/chatMLFetcher';
 import { IChatQuotaService } from '../../chat/common/chatQuotaService';
 import { ChatLocation } from '../../chat/common/commonTypes';
 import { IInteractionService } from '../../chat/common/interactionService';
@@ -43,7 +42,7 @@ interface CopilotOnlyParams {
 }
 
 export interface ChatRequest extends
-	RequiredChatRequestParams, OptionalChatRequestParams, CopilotOnlyParams, IntentParams {
+	RequiredChatRequestParams, OptionalChatRequestParams, CopilotOnlyParams {
 }
 
 export enum FetchResponseKind {
@@ -519,6 +518,10 @@ async function fetchWithInstrumentation(
 		if (apim) {
 			logService.debug(`APIM request id: ${apim}`);
 		}
+		const ghRequestId = response.headers.get('x-github-request-id');
+		if (ghRequestId) {
+			logService.debug(`GH request id: ${ghRequestId}`);
+		}
 		// This ID is hopefully the one the same as ourRequestId, but it is not guaranteed.
 		// If they are different then we will override the original one we set in telemetryData above.
 		const modelRequestId = getRequestId(response, undefined);
@@ -564,7 +567,7 @@ async function fetchWithInstrumentation(
 			throw error;
 		})
 		.finally(() => {
-			sendEngineMessagesTelemetry(telemetryService, request.messages!, telemetryData, false, logService);
+			sendEngineMessagesTelemetry(telemetryService, request.messages ?? [], telemetryData, false, logService);
 		});
 }
 

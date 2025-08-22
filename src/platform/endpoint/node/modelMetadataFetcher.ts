@@ -21,7 +21,7 @@ import { IExperimentationService } from '../../telemetry/common/nullExperimentat
 import { ITelemetryService } from '../../telemetry/common/telemetry';
 import { ICAPIClientService } from '../common/capiClient';
 import { IDomainService } from '../common/domainService';
-import { ChatEndpointFamily, IChatModelInformation, IEmbeddingModelInformation, IModelAPIResponse, isChatModelInformation, isEmbeddingModelInformation } from '../common/endpointProvider';
+import { ChatEndpointFamily, IChatModelInformation, ICompletionModelInformation, IModelAPIResponse, isChatModelInformation, isCompletionModelInformation } from '../common/endpointProvider';
 import { getMaxPromptTokens } from './chatEndpoint';
 
 export interface IModelMetadataFetcher {
@@ -31,6 +31,11 @@ export interface IModelMetadataFetcher {
 	 * Does not always indicate there is a change, just that the data is fresh
 	 */
 	onDidModelsRefresh: Event<void>;
+
+	/**
+	 * Gets all the completion models known by the model fetcher endpoint
+	 */
+	getAllCompletionModels(forceRefresh: boolean): Promise<ICompletionModelInformation[]>;
 
 	/**
 	 * Gets all the chat models known by the model fetcher endpoint
@@ -49,12 +54,6 @@ export interface IModelMetadataFetcher {
 	 * @returns The chat model information if found, otherwise undefined
 	 */
 	getChatModelFromApiModel(model: LanguageModelChat): Promise<IChatModelInformation | undefined>;
-
-	/**
-	 * Retrieves an embeddings model by its family name
-	 * @param family The family of the model to fetch
-	 */
-	getEmbeddingsModel(family: 'text-embedding-3-small'): Promise<IEmbeddingModelInformation>;
 }
 
 /**
@@ -76,7 +75,7 @@ export class ModelMetadataFetcher implements IModelMetadataFetcher {
 	public onDidModelsRefresh = this._onDidModelRefresh.event;
 
 	constructor(
-		private readonly collectFetcherTelemetry: ((accessor: ServicesAccessor) => void) | undefined,
+		private readonly collectFetcherTelemetry: ((accessor: ServicesAccessor, error: any) => void) | undefined,
 		protected readonly _isModelLab: boolean,
 		@IFetcherService private readonly _fetcher: IFetcherService,
 		@IRequestLogger private readonly _requestLogger: IRequestLogger,
@@ -90,6 +89,19 @@ export class ModelMetadataFetcher implements IModelMetadataFetcher {
 		@ILogService private readonly _logService: ILogService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 	) { }
+
+	public async getAllCompletionModels(forceRefresh: boolean): Promise<ICompletionModelInformation[]> {
+		await this._taskSingler.getOrCreate(ModelMetadataFetcher.ALL_MODEL_KEY, () => this._fetchModels(forceRefresh));
+		const completionModels: ICompletionModelInformation[] = [];
+		for (const [, models] of this._familyMap) {
+			for (const model of models) {
+				if (isCompletionModelInformation(model)) {
+					completionModels.push(model);
+				}
+			}
+		}
+		return completionModels;
+	}
 
 	public async getAllChatModels(): Promise<IChatModelInformation[]> {
 		await this._taskSingler.getOrCreate(ModelMetadataFetcher.ALL_MODEL_KEY, this._fetchModels.bind(this));
@@ -168,16 +180,6 @@ export class ModelMetadataFetcher implements IModelMetadataFetcher {
 		resolvedModel = await this._hydrateResolvedModel(resolvedModel);
 		if (!isChatModelInformation(resolvedModel)) {
 			throw new Error(`Unable to resolve chat model: ${apiModel.id},${apiModel.name},${apiModel.version},${apiModel.family}`);
-		}
-		return resolvedModel;
-	}
-
-	public async getEmbeddingsModel(family: 'text-embedding-3-small'): Promise<IEmbeddingModelInformation> {
-		await this._taskSingler.getOrCreate(ModelMetadataFetcher.ALL_MODEL_KEY, this._fetchModels.bind(this));
-		let resolvedModel = this._familyMap.get(family)?.[0];
-		resolvedModel = await this._hydrateResolvedModel(resolvedModel);
-		if (!isEmbeddingModelInformation(resolvedModel)) {
-			throw new Error(`Unable to resolve embeddings model with family selection: ${family}`);
 		}
 		return resolvedModel;
 	}
@@ -262,13 +264,16 @@ export class ModelMetadataFetcher implements IModelMetadataFetcher {
 			this._onDidModelRefresh.fire();
 
 			if (this.collectFetcherTelemetry) {
-				this._instantiationService.invokeFunction(this.collectFetcherTelemetry);
+				this._instantiationService.invokeFunction(this.collectFetcherTelemetry, undefined);
 			}
 		} catch (e) {
 			this._logService.error(e, `Failed to fetch models (${requestId})`);
 			this._lastFetchError = e;
 			this._lastFetchTime = 0;
 			// If we fail to fetch models, we should try again next time
+			if (this.collectFetcherTelemetry) {
+				this._instantiationService.invokeFunction(this.collectFetcherTelemetry, e);
+			}
 		}
 	}
 
@@ -292,6 +297,10 @@ export class ModelMetadataFetcher implements IModelMetadataFetcher {
 			);
 
 			const data: IModelAPIResponse = await response.json();
+			if (response.status !== 200) {
+				this._logService.error(`Failed to fetch model ${modelId} (requestId: ${requestId}): ${JSON.stringify(data)}`);
+				return;
+			}
 			this._requestLogger.logModelListCall(requestId, requestMetadata, [data]);
 			if (data.capabilities.type === 'completion') {
 				return;

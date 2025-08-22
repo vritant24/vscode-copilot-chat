@@ -11,7 +11,6 @@ import { AsyncIterableObject } from '../../../util/vs/base/common/async';
 import { toErrorMessage } from '../../../util/vs/base/common/errorMessage';
 import { generateUuid } from '../../../util/vs/base/common/uuid';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
-import { IntentParams } from '../../chat/common/chatMLFetcher';
 import { ChatFetchResponseType, ChatLocation, ChatResponse } from '../../chat/common/commonTypes';
 import { ILogService } from '../../log/common/logService';
 import { FinishedCallback, OpenAiFunctionTool, OptionalChatRequestParams } from '../../networking/common/fetch';
@@ -90,10 +89,6 @@ export class ExtensionContributedChatEndpoint implements IChatEndpoint {
 
 	get supportsPrediction(): boolean {
 		return false;
-	}
-
-	get supportsStatefulResponses() {
-		return false; // todo@connor4312 ?
 	}
 
 	get policy(): 'enabled' | { terms: string } {
@@ -196,7 +191,6 @@ export class ExtensionContributedChatEndpoint implements IChatEndpoint {
 		requestOptions?: Omit<OptionalChatRequestParams, 'n'>,
 		userInitiatedRequest?: boolean,
 		telemetryProperties?: Record<string, string>,
-		intentParams?: IntentParams
 	): Promise<ChatResponse> {
 		return this.makeChatRequest2({
 			debugName,
@@ -207,7 +201,6 @@ export class ExtensionContributedChatEndpoint implements IChatEndpoint {
 			requestOptions,
 			userInitiatedRequest,
 			telemetryProperties,
-			intentParams
 		}, token);
 	}
 
@@ -257,7 +250,6 @@ export class ExtensionContributedChatEndpoint implements IChatEndpoint {
 						await finishedCb?.(text, 0, { text: '', statefulMarker: decoded.marker });
 					}
 				} else if (chunk instanceof vscode.LanguageModelThinkingPart) {
-					text += chunk.value;
 					// Call finishedCb with the current chunk of thinking text with a specific thinking field
 					if (finishedCb) {
 						await finishedCb(text, 0, {

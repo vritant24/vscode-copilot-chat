@@ -15,7 +15,7 @@ This is the state of the context at this point in the conversation. The view of 
 </workspace_info>
 
 
-copilot_cache_control: { type: 'ephemeral' }
+[copilot_cache_control: { type: 'ephemeral' }]
 ~~~
 
 
@@ -53,7 +53,7 @@ previous turn 2
 </userRequest>
 
 
-copilot_cache_control: { type: 'ephemeral' }
+[copilot_cache_control: { type: 'ephemeral' }]
 ~~~
 
 
@@ -61,7 +61,7 @@ copilot_cache_control: { type: 'ephemeral' }
 ~~~md
 response
 
-copilot_cache_control: { type: 'ephemeral' }
+[copilot_cache_control: { type: 'ephemeral' }]
 ~~~
 
 
@@ -69,13 +69,11 @@ copilot_cache_control: { type: 'ephemeral' }
 ~~~md
 <attachments>
 <attachment id="file" filePath="/workspace/file.ts">
-```ts
 line 1
 line 2
 
 line 4
 line 5
-```
 </attachment>
 
 </attachments>
@@ -90,5 +88,5 @@ hello
 </userRequest>
 
 
-copilot_cache_control: { type: 'ephemeral' }
+[copilot_cache_control: { type: 'ephemeral' }]
 ~~~

@@ -208,7 +208,7 @@ declare module 'vscode' {
 		*/
 		progress(value: string, task?: (progress: Progress<ChatResponseWarningPart | ChatResponseReferencePart>) => Thenable<string | void>): void;
 
-		thinkingProgress(value: string, id?: string, metadata?: string): void;
+		thinkingProgress(thinkingDelta: ThinkingDelta): void;
 
 		textEdit(target: Uri, edits: TextEdit | TextEdit[]): void;
 
@@ -267,6 +267,21 @@ declare module 'vscode' {
 		FilteredContentRetry = 1,
 		CopyrightContentRetry = 2,
 	}
+
+	export type ThinkingDelta = {
+		text?: string;
+		id: string;
+		metadata?: string;
+	} | {
+		text?: string;
+		id?: string;
+		metadata: string;
+	} |
+	{
+		text: string;
+		id?: string;
+		metadata?: string;
+	};
 
 	/**
 	 * Does this piggy-back on the existing ChatRequest, or is it a different type of request entirely?
@@ -480,6 +495,17 @@ declare module 'vscode' {
 		outcome: ChatEditingSessionActionOutcome;
 	}
 
+	export interface ChatEditingHunkAction {
+		// eslint-disable-next-line local/vscode-dts-string-type-literals
+		kind: 'chatEditingHunkAction';
+		uri: Uri;
+		hasRemainingEdits: boolean;
+		outcome: ChatEditingHunkActionOutcome;
+		lineCount: number;
+		linesAdded: number;
+		linesRemoved: number;
+	}
+
 	export enum ChatEditingSessionActionOutcome {
 		Accepted = 1,
 		Rejected = 2,
@@ -488,7 +514,7 @@ declare module 'vscode' {
 
 	export interface ChatUserActionEvent {
 		readonly result: ChatResult;
-		readonly action: ChatCopyAction | ChatInsertAction | ChatApplyAction | ChatTerminalAction | ChatCommandAction | ChatFollowupAction | ChatBugReportAction | ChatEditorAction | ChatEditingSessionAction;
+		readonly action: ChatCopyAction | ChatInsertAction | ChatApplyAction | ChatTerminalAction | ChatCommandAction | ChatFollowupAction | ChatBugReportAction | ChatEditorAction | ChatEditingSessionAction | ChatEditingHunkAction;
 	}
 
 	export interface ChatPromptReference {

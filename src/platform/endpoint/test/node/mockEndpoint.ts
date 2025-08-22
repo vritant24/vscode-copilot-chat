@@ -7,7 +7,7 @@ import { Raw } from '@vscode/prompt-tsx';
 import { ITokenizer, TokenizerType } from '../../../../util/common/tokenizer';
 import { AsyncIterableObject } from '../../../../util/vs/base/common/async';
 import { CancellationToken } from '../../../../util/vs/base/common/cancellation';
-import { IChatMLFetcher, IntentParams, Source } from '../../../chat/common/chatMLFetcher';
+import { IChatMLFetcher, Source } from '../../../chat/common/chatMLFetcher';
 import { ChatLocation, ChatResponse } from '../../../chat/common/commonTypes';
 import { CHAT_MODEL } from '../../../configuration/common/configurationService';
 import { ILogService } from '../../../log/common/logService';
@@ -21,9 +21,15 @@ import { ITokenizerProvider } from '../../../tokenizer/node/tokenizer';
 
 export class MockEndpoint implements IChatEndpoint {
 	constructor(
+		family: string | undefined,
 		@IChatMLFetcher private readonly _chatMLFetcher: IChatMLFetcher,
 		@ITokenizerProvider private readonly _tokenizerProvider: ITokenizerProvider,
-	) { }
+	) {
+		if (family !== undefined) {
+			this.family = family;
+		}
+	}
+
 	isPremium: boolean = false;
 	multiplier: number = 0;
 	restrictedToSkus?: string[] | undefined;
@@ -34,15 +40,14 @@ export class MockEndpoint implements IChatEndpoint {
 	supportsVision: boolean = false;
 	supportsPrediction: boolean = true;
 	showInModelPicker: boolean = true;
-	supportsStatefulResponses: boolean = false;
 	isDefault: boolean = false;
 	isFallback: boolean = false;
 	policy: 'enabled' | { terms: string } = 'enabled';
 	urlOrRequestMetadata: string = 'https://microsoft.com';
 	modelMaxPromptTokens: number = 50000;
 	name: string = 'test';
-	version: string = '1.0';
 	family: string = 'test';
+	version: string = '1.0';
 	tokenizer: TokenizerType = TokenizerType.O200K;
 
 	processResponseFromChatEndpoint(telemetryService: ITelemetryService, logService: ILogService, response: Response, expectedNumChoices: number, finishCallback: FinishedCallback, telemetryData: TelemetryData, cancellationToken?: CancellationToken): Promise<AsyncIterableObject<ChatCompletion>> {
@@ -75,7 +80,6 @@ export class MockEndpoint implements IChatEndpoint {
 		requestOptions?: Omit<OptionalChatRequestParams, 'n'>,
 		userInitiatedRequest?: boolean,
 		telemetryProperties?: TelemetryProperties,
-		intentParams?: IntentParams
 	): Promise<ChatResponse> {
 		return this.makeChatRequest2({
 			debugName,
@@ -86,7 +90,6 @@ export class MockEndpoint implements IChatEndpoint {
 			requestOptions,
 			userInitiatedRequest,
 			telemetryProperties,
-			intentParams
 		}, token);
 	}
 
