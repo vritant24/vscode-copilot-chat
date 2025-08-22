@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 import assert from 'assert';
+import * as fs from 'fs';
 import * as path from 'path';
 import type * as vscode from 'vscode';
 import { Intent } from '../../src/extension/common/constants';
@@ -26,7 +27,7 @@ import { ITestingServicesAccessor, TestingServiceCollection } from '../../src/pl
 import { IFile, isNotebook, SimulationWorkspace } from '../../src/platform/test/node/simulationWorkspace';
 import { ChatResponseStreamImpl } from '../../src/util/common/chatResponseStreamImpl';
 import { getLanguage, getLanguageForResource } from '../../src/util/common/languages';
-import { ChatRequestTurn, ChatResponseTurn } from '../../src/util/common/test/shims/chatTypes';
+import { ChatRequestTurn, ChatResponseMarkdownPart, ChatResponseTurn } from '../../src/util/common/test/shims/chatTypes';
 import { ExtHostNotebookDocumentData, NotebookRange } from '../../src/util/common/test/shims/notebookDocument';
 import { ExtHostDocumentData } from '../../src/util/common/test/shims/textDocument';
 import { CancellationToken } from '../../src/util/vs/base/common/cancellation';
@@ -37,7 +38,7 @@ import { commonPrefixLength, commonSuffixLength } from '../../src/util/vs/base/c
 import { URI } from '../../src/util/vs/base/common/uri';
 import { SyncDescriptor } from '../../src/util/vs/platform/instantiation/common/descriptors';
 import { IInstantiationService } from '../../src/util/vs/platform/instantiation/common/instantiation';
-import { ChatLocation, ChatRequest, ChatRequestEditorData, ChatResponseMarkdownPart, ChatResponseNotebookEditPart, ChatResponseTextEditPart, Diagnostic, DiagnosticRelatedInformation, Location, Range, Selection, TextEdit, Uri, WorkspaceEdit } from '../../src/vscodeTypes';
+import { ChatLocation, ChatRequest, ChatRequestEditorData, ChatResponseNotebookEditPart, ChatResponseTextEditPart, Diagnostic, DiagnosticRelatedInformation, Location, Range, Selection, TextEdit, Uri, WorkspaceEdit } from '../../src/vscodeTypes';
 import { SimulationExtHostToolsService } from '../base/extHostContext/simulationExtHostToolsService';
 import { SimulationWorkspaceExtHost } from '../base/extHostContext/simulationWorkspaceExtHost';
 import { SpyingChatMLFetcher } from '../base/spyingChatMLFetcher';
@@ -47,10 +48,237 @@ import { readBuiltinIntents } from '../intent/intentTest';
 import { getDiagnostics } from './diagnosticProviders';
 import { convertTestToVSCodeDiagnostics } from './diagnosticProviders/utils';
 import { SimulationLanguageFeaturesService } from './language/simulationLanguageFeatureService';
-import { IDiagnostic, IDiagnosticComparison, INLINE_CHANGED_DOC_TAG, INLINE_INITIAL_DOC_TAG, INLINE_STATE_TAG, IRange, IWorkspaceState, IWorkspaceStateFile } from './shared/sharedTypes';
+import { IDiagnostic, IDiagnosticComparison, INLINE_CHANGED_DOC_TAG, INLINE_HISTORY_TAG, INLINE_INITIAL_DOC_TAG, INLINE_STATE_TAG, IRange, IWorkspaceState, IWorkspaceStateFile } from './shared/sharedTypes';
 import { DiagnosticProviderId, EditTestStrategy, IDeserializedWorkspaceStateBasedScenario, IInlineEdit, IOutcome, IScenario, IScenarioDiagnostic, IScenarioQuery, OutcomeAnnotation } from './types';
 
 export type SimulationWorkspaceInput = { files: IFile[]; workspaceFolders?: Uri[] } | { workspaceState: IDeserializedWorkspaceState };
+
+export interface ITrajectoryTurn {
+	type: 'request' | 'response';
+	prompt?: string;
+	command?: string;
+	references?: any[];
+	participant?: string;
+	toolReferences?: any[];
+	response?: any[];
+	result?: any;
+}
+
+export interface ITrajectoryData {
+	instance_id: string;
+	description?: string;
+	history: ITrajectoryTurn[];
+}
+
+export interface ITrajectoryCollection {
+	[instance_id: string]: ITrajectoryData;
+}
+
+export async function loadTurnIndexedTrajectory(testRuntime: ISimulationTestRuntime, baseDir: string, instanceId: string, maxTurns: number = 50): Promise<ITrajectoryData | undefined> {
+	const history: ITrajectoryTurn[] = [];
+
+	// Try to load turn files in order
+	for (let turnIndex = 0; turnIndex < maxTurns; turnIndex++) {
+		const turnFileName = `history-turn-${turnIndex.toString().padStart(3, '0')}.txt`;
+		const turnFilePath = path.join(baseDir, turnFileName);
+
+		try {
+			if (fs.existsSync(turnFilePath)) {
+				const turnData = await testRuntime.readResourceFile(turnFilePath);
+				const parsedTurn = JSON.parse(turnData);
+
+				// Verify this is the turn we expect and for the right instance
+				if (parsedTurn.turnIndex === turnIndex && parsedTurn.instanceId === instanceId) {
+					// Add all turns from this file (should be 2: request + response)
+					history.push(...parsedTurn.turns);
+				}
+			} else {
+				// No more turn files found
+				break;
+			}
+		} catch (error) {
+			console.warn(`Failed to load turn ${turnIndex}: ${error}`);
+			break;
+		}
+	}
+
+	if (history.length === 0) {
+		return undefined;
+	}
+
+	return {
+		instance_id: instanceId,
+		description: `Reconstructed trajectory from ${history.length / 2} turns`,
+		history
+	};
+}
+
+export function convertTrajectoryToHistory(trajectory: ITrajectoryData): (ChatRequestTurn | ChatResponseTurn)[] {
+	const history: (ChatRequestTurn | ChatResponseTurn)[] = [];
+
+	for (const turn of trajectory.history) {
+		if (turn.type === 'request') {
+			history.push(new ChatRequestTurn(
+				turn.prompt || '',
+				turn.command,
+				turn.references || [],
+				turn.participant || '',
+				turn.toolReferences || []
+			));
+		} else if (turn.type === 'response') {
+			const responseParts = (turn.response || []).map(part => {
+				if (part.type === 'markdown') {
+					return new ChatResponseMarkdownPart(part.value);
+				}
+				return part;
+			});
+			history.push(new ChatResponseTurn(
+				responseParts,
+				turn.result || { metadata: {} },
+				turn.participant || '',
+				turn.command
+			));
+		}
+	}
+
+	return history;
+}
+
+// Legacy functions for backward compatibility
+export function loadTrajectories(trajectoryFilePath: string): ITrajectoryCollection {
+	const trajectoryData = fs.readFileSync(trajectoryFilePath, 'utf8');
+	return JSON.parse(trajectoryData) as ITrajectoryCollection;
+}
+
+export function loadTrajectoryByInstanceId(trajectoryFilePath: string, instanceId: string): ITrajectoryData | undefined {
+	const trajectories = loadTrajectories(trajectoryFilePath);
+	return trajectories[instanceId];
+}
+
+export async function simulateInlineChatWithTrajectory(
+	testingServiceCollection: TestingServiceCollection,
+	scenario: IScenario,
+	trajectoryFilePath: string,
+	instanceId: string,
+	strategy: EditTestStrategy = EditTestStrategy.Inline
+): Promise<void> {
+	const trajectoryData = loadTrajectoryByInstanceId(trajectoryFilePath, instanceId);
+	if (!trajectoryData) {
+		throw new Error(`Trajectory with instance_id '${instanceId}' not found in ${trajectoryFilePath}`);
+	}
+
+	return simulateInlineChatWithStrategy(strategy, testingServiceCollection, scenario, trajectoryData);
+}
+
+export async function simulateInlineChatWithTurnIndexedTrajectory(
+	testRuntime: ISimulationTestRuntime,
+	testingServiceCollection: TestingServiceCollection,
+	scenario: IScenario,
+	baseDir: string,
+	instanceId: string,
+	strategy: EditTestStrategy = EditTestStrategy.Inline,
+	maxTurns: number = 50
+): Promise<void> {
+	const trajectoryData = await loadTurnIndexedTrajectory(testRuntime, baseDir, instanceId, maxTurns);
+	if (!trajectoryData) {
+		throw new Error(`Turn-indexed trajectory for instance_id '${instanceId}' not found in ${baseDir}`);
+	}
+
+	console.log(`Loaded trajectory with ${trajectoryData.history.length} turns from ${baseDir}`);
+	return simulateInlineChatWithStrategy(strategy, testingServiceCollection, scenario, trajectoryData);
+}
+
+export async function simulateInlineChatAndSaveTurnIndexedHistory(
+	testingServiceCollection: TestingServiceCollection,
+	scenario: IScenario,
+	instanceId: string,
+	description?: string,
+	strategy: EditTestStrategy = EditTestStrategy.Inline
+): Promise<void> {
+	const saveHistoryOptions = {
+		instanceId,
+		description: description || `Generated turn-indexed history for ${instanceId}`
+	};
+
+	return simulateInlineChatWithStrategy(strategy, testingServiceCollection, scenario, undefined, saveHistoryOptions);
+}
+
+// Legacy function for backward compatibility
+export async function simulateInlineChatAndSaveHistory(
+	testingServiceCollection: TestingServiceCollection,
+	scenario: IScenario,
+	instanceId: string,
+	description?: string,
+	strategy: EditTestStrategy = EditTestStrategy.Inline
+): Promise<void> {
+	return simulateInlineChatAndSaveTurnIndexedHistory(testingServiceCollection, scenario, instanceId, description, strategy);
+}
+
+export async function simulateInlineChatWithAutoSave(
+	testingServiceCollection: TestingServiceCollection,
+	scenario: IScenario,
+	instanceId: string,
+	description?: string,
+	strategy: EditTestStrategy = EditTestStrategy.Inline
+): Promise<void> {
+	return simulateInlineChatAndSaveTurnIndexedHistory(testingServiceCollection, scenario, instanceId, description, strategy);
+}
+
+async function getNextTurnIndex(testRuntime: any): Promise<number> {
+	// Scan for existing turn files to find the highest index
+	let turnIndex = 0;
+	while (turnIndex < 50) {
+		const turnFileName = `history-turn-${turnIndex.toString()}.txt`;
+		try {
+			// Try to read the file to see if it exists
+			await testRuntime.readFile(turnFileName, INLINE_HISTORY_TAG);
+			turnIndex++;
+			throw new Error(`File found.`);
+			// If we got here, the file exists, so increment and check next
+		} catch (error) {
+			// File doesn't exist, so this is our next available index
+			if (turnIndex > 0) {
+				throw error;
+			} else {
+				break;
+			}
+		}
+	}
+	return turnIndex;
+}
+
+export function serializeHistoryForSaving(history: (ChatRequestTurn | ChatResponseTurn)[]): ITrajectoryTurn[] {
+	return history.map(turn => {
+		if (turn instanceof ChatRequestTurn) {
+			return {
+				type: 'request' as const,
+				prompt: turn.prompt,
+				command: turn.command,
+				references: turn.references.map(ref => ({ ...ref })),
+				participant: turn.participant,
+				toolReferences: turn.toolReferences
+			};
+		} else if (turn instanceof ChatResponseTurn) {
+			return {
+				type: 'response' as const,
+				response: turn.response.map(part => {
+					if (part instanceof ChatResponseMarkdownPart) {
+						return {
+							type: 'markdown',
+							value: typeof part.value === 'string' ? part.value : part.value.value
+						};
+					}
+					return part;
+				}),
+				result: turn.result,
+				participant: turn.participant,
+				command: turn.command
+			};
+		}
+		return turn;
+	});
+}
+
 
 export function setupSimulationWorkspace(testingServiceCollection: TestingServiceCollection, input: SimulationWorkspaceInput): SimulationWorkspace {
 	const workspace = isInExtensionHost ? new SimulationWorkspaceExtHost() : new SimulationWorkspace();
@@ -75,18 +303,20 @@ function isDeserializedWorkspaceStateBasedScenario(scenario: IScenario): scenari
 	return 'workspaceState' in scenario;
 }
 
-export function simulateInlineChatWithStrategy(strategy: EditTestStrategy, testingServiceCollection: TestingServiceCollection, scenario: IScenario) {
+export function simulateInlineChatWithStrategy(strategy: EditTestStrategy, testingServiceCollection: TestingServiceCollection, scenario: IScenario, trajectoryData?: ITrajectoryData, saveHistoryOptions?: { instanceId: string; description?: string; autoSaveAt50?: boolean }) {
 
 	if (strategy === EditTestStrategy.Inline2) {
-		return simulateInlineChat3(testingServiceCollection, scenario);
+		return simulateInlineChat3(testingServiceCollection, scenario, trajectoryData, saveHistoryOptions);
 	} else {
-		return simulateInlineChat(testingServiceCollection, scenario);
+		return simulateInlineChat(testingServiceCollection, scenario, trajectoryData, saveHistoryOptions);
 	}
 }
 
 export async function simulateInlineChat(
 	testingServiceCollection: TestingServiceCollection,
-	scenario: IScenario
+	scenario: IScenario,
+	trajectoryData?: ITrajectoryData,
+	saveHistoryOptions?: { instanceId: string; description?: string }
 ): Promise<void> {
 	const host: EditingSimulationHost = {
 		prepareChatRequestLocation: (accessor: ITestingServicesAccessor, wholeRange?: Range) => {
@@ -100,12 +330,14 @@ export async function simulateInlineChat(
 			};
 		}
 	};
-	return simulateEditingScenario(testingServiceCollection, scenario, host);
+	return simulateEditingScenario(testingServiceCollection, scenario, host, trajectoryData, saveHistoryOptions);
 }
 
 export async function simulateInlineChat3(
 	testingServiceCollection: TestingServiceCollection,
-	scenario: IScenario
+	scenario: IScenario,
+	trajectoryData?: ITrajectoryData,
+	saveHistoryOptions?: { instanceId: string; description?: string }
 ): Promise<void> {
 	const host: EditingSimulationHost = {
 		agentArgs: {
@@ -124,12 +356,14 @@ export async function simulateInlineChat3(
 			};
 		}
 	};
-	return simulateEditingScenario(testingServiceCollection, scenario, host);
+	return simulateEditingScenario(testingServiceCollection, scenario, host, trajectoryData, saveHistoryOptions);
 }
 
 export async function simulateInlineChat2(
 	testingServiceCollection: TestingServiceCollection,
-	scenario: IScenario
+	scenario: IScenario,
+	trajectoryData?: ITrajectoryData,
+	saveHistoryOptions?: { instanceId: string; description?: string }
 ): Promise<void> {
 
 	const overrideCommand = '/edit';
@@ -159,7 +393,7 @@ export async function simulateInlineChat2(
 			};
 		}
 	};
-	return simulateEditingScenario(testingServiceCollection, massagedScenario, host);
+	return simulateEditingScenario(testingServiceCollection, massagedScenario, host, trajectoryData, saveHistoryOptions);
 }
 
 export type EditingSimulationHostResponseProcessor = {
@@ -181,7 +415,9 @@ export interface EditingSimulationHost {
 export async function simulateEditingScenario(
 	testingServiceCollection: TestingServiceCollection,
 	scenario: IScenario,
-	host: EditingSimulationHost
+	host: EditingSimulationHost,
+	trajectoryData?: ITrajectoryData,
+	saveHistoryOptions?: { instanceId: string; description?: string }
 ): Promise<void> {
 	assert(scenario.queries.length > 0, `Cannot simulate scenario with no queries`);
 	assert(isDeserializedWorkspaceStateBasedScenario(scenario) || scenario.files.length > 0, `Cannot simulate scenario with no files`);
@@ -198,7 +434,9 @@ export async function simulateEditingScenario(
 	const states: IWorkspaceState[] = [];
 	let range: Range | undefined;
 	let isFirst = true;
-	const history: (ChatRequestTurn | ChatResponseTurn)[] = [];
+	// Determine the current turn index by checking existing files
+	const turnIndex = await getNextTurnIndex(testRuntime);
+	const history: (ChatRequestTurn | ChatResponseTurn)[] = trajectoryData ? convertTrajectoryToHistory(trajectoryData) : [];
 	/**
 	 * A map from doc to relative path with initial contents which is populated right before modifying a document.
 	 */
@@ -485,6 +723,16 @@ export async function simulateEditingScenario(
 			history.push(new ChatRequestTurn(request.prompt, request.command, [...request.references], '', []));
 			history.push(new ChatResponseTurn([new ChatResponseMarkdownPart(markdownChunks.join(''))], result, ''));
 
+			// Save this turn if we have save options and haven't exceeded turn 50
+			if (turnIndex < 50) {
+				const turnData = {
+					turnIndex,
+					//instanceId: saveHistoryOptions.instanceId,
+					//description: saveHistoryOptions.description,
+					turns: serializeHistoryForSaving(history) // This will be just the current 2 turns
+				};
+				await testRuntime.writeResourceFile(`history-turn-${turnIndex.toString()}.txt`, JSON.stringify(turnData, undefined, 2), INLINE_HISTORY_TAG);
+			}
 			let annotations = await responseProcessor?.postProcess(accessor, workspace, stream, result) ?? [];
 
 			let interactionOutcomeKind = interactionOutcomeComputer.interactionOutcome.kind;
