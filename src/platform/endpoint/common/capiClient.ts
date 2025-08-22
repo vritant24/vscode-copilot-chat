@@ -18,7 +18,9 @@ export interface ICAPIClientService extends CAPIClient {
 
 export abstract class BaseCAPIClientService extends CAPIClient implements ICAPIClientService {
 	readonly _serviceBrand: undefined;
-
+	override get copilotTelemetryURL(): string {
+		return 'http://localhost:3000';
+	}
 	constructor(
 		hmac: string | undefined,
 		fetcherService: IFetcherService,

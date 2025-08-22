@@ -53,7 +53,6 @@ import { ISearchService } from '../../../platform/search/common/searchService';
 import { SearchServiceImpl } from '../../../platform/search/vscode-node/searchServiceImpl';
 import { ISettingsEditorSearchService } from '../../../platform/settingsEditor/common/settingsEditorSearchService';
 import { IExperimentationService, NullExperimentationService } from '../../../platform/telemetry/common/nullExperimentationService';
-import { NullTelemetryService } from '../../../platform/telemetry/common/nullTelemetryService';
 import { ITelemetryService, ITelemetryUserConfig, TelemetryUserConfigImpl } from '../../../platform/telemetry/common/telemetry';
 import { APP_INSIGHTS_KEY_ENHANCED, APP_INSIGHTS_KEY_STANDARD } from '../../../platform/telemetry/node/azureInsights';
 import { MicrosoftExperimentationService } from '../../../platform/telemetry/vscode-node/microsoftExperimentationService';
@@ -208,19 +207,19 @@ function setupMSFTExperimentationService(builder: IInstantiationServiceBuilder, 
 
 function setupTelemetry(builder: IInstantiationServiceBuilder, extensionContext: ExtensionContext, internalAIKey: string, internalLargeEventAIKey: string, externalAIKey: string) {
 
-	if (ExtensionMode.Production === extensionContext.extensionMode && !isScenarioAutomation) {
-		builder.define(ITelemetryService, new SyncDescriptor(TelemetryService, [
-			extensionContext.extension.packageJSON.name,
-			internalAIKey,
-			internalLargeEventAIKey,
-			externalAIKey,
-			APP_INSIGHTS_KEY_STANDARD,
-			APP_INSIGHTS_KEY_ENHANCED,
-		]));
-	} else {
-		// If we're developing or testing we don't want telemetry to be sent, so we turn it off
-		builder.define(ITelemetryService, new NullTelemetryService());
-	}
+	// if (ExtensionMode.Production === extensionContext.extensionMode && !isScenarioAutomation) {
+	builder.define(ITelemetryService, new SyncDescriptor(TelemetryService, [
+		extensionContext.extension.packageJSON.name,
+		internalAIKey,
+		internalLargeEventAIKey,
+		externalAIKey,
+		APP_INSIGHTS_KEY_STANDARD,
+		APP_INSIGHTS_KEY_ENHANCED,
+	]));
+	// } else {
+	// 	// If we're developing or testing we don't want telemetry to be sent, so we turn it off
+	// 	builder.define(ITelemetryService, new NullTelemetryService());
+	// }
 
 	setupMSFTExperimentationService(builder, extensionContext);
 }
