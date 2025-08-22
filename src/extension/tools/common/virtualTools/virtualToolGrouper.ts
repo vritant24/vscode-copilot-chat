@@ -292,6 +292,8 @@ export class VirtualToolGrouper implements IToolCategorization {
 		}
 		const queryEmbeddingVector = queryEmbedding.values[0];
 
+		//TODO: exclude default tools
+		//TODO: compute embeddings for tools not previously seen -> needs extra work
 		// get the top 10 tool embeddings, but only consider available tools
 		const availableToolNames = new Set(tools.map(tool => tool.name));
 		const toolEmbeddings = await this.toolEmbeddingsComputer.retrieveSimilarEmbeddingsForAvailableTools(queryEmbeddingVector, availableToolNames, 10);
