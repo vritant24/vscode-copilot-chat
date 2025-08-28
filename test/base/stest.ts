@@ -518,6 +518,9 @@ export interface ISimulationTestRuntime extends ILogTarget, ISimulationTestConte
 	log(message: string, err?: any): void;
 	flushLogs(): Promise<void>;
 	writeFile(filename: string, contents: Uint8Array | string, tag: string): Promise<string>;
+	readFile(filename: string): Promise<string>;
+	writeResourceFile(filename: string, contents: Uint8Array | string, tag: string): Promise<string>;
+	readResourceFile(filename: string): Promise<string>;
 	getWrittenFiles(): IWrittenFile[];
 	getOutcome(): SimulationTestOutcome | undefined;
 	setOutcome(outcome: SimulationTestOutcome): void;
@@ -538,6 +541,7 @@ export class SimulationTestRuntime implements ISimulationTestRuntime {
 	constructor(
 		private readonly baseDir: string,
 		private readonly testOutcomeDir: string,
+		private readonly resourceDirectory: string,
 		protected readonly runNumber: number
 	) { }
 
@@ -582,6 +586,32 @@ export class SimulationTestRuntime implements ISimulationTestRuntime {
 		await fs.promises.mkdir(path.dirname(dest), { recursive: true });
 		await fs.promises.writeFile(dest, contents);
 		return relativePath;
+	}
+
+	public async writeResourceFile(filename: string, contents: Uint8Array | string, tag: string): Promise<string> {
+		const dirName = path.basename(path.dirname(this.testOutcomeDir));
+		const dest =
+			path.join(this.resourceDirectory, dirName, this.massageFilename(filename));
+
+		const relativePath = path.relative(this.baseDir, dest);
+		this.writtenFiles.push({
+			relativePath,
+			tag
+		});
+
+		await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+		await fs.promises.writeFile(dest, contents);
+		return relativePath;
+	}
+
+	public async readFile(filename: string): Promise<string> {
+		const filePath = path.join(this.testOutcomeDir, this.massageFilename(filename));
+		return await fs.promises.readFile(filePath, 'utf8');
+	}
+
+	public async readResourceFile(filename: string): Promise<string> {
+		const filePath = path.join(this.resourceDirectory, this.massageFilename(filename));
+		return await fs.promises.readFile(filePath, 'utf8');
 	}
 
 	protected massageFilename(filename: string): string {
