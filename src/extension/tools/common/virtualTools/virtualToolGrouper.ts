@@ -25,6 +25,8 @@ const CATEGORIZATION_ENDPOINT = CHAT_MODEL.GPT4OMINI;
 const SUMMARY_PREFIX = 'Call this tool when you need access to a new category of tools. The category of tools is described as follows:\n\n';
 const SUMMARY_SUFFIX = '\n\nBe sure to call this tool if you need a capability related to the above.';
 
+const EMBEDDING_TYPE_FOR_TOOL_GROUPING = EmbeddingType.text3small_512;
+
 export class VirtualToolGrouper implements IToolCategorization {
 	private readonly toolEmbeddingsComputer: ToolEmbeddingsComputer;
 
@@ -35,7 +37,7 @@ export class VirtualToolGrouper implements IToolCategorization {
 		@ILogService private readonly _logService: ILogService,
 		@IEmbeddingsComputer private readonly embeddingsComputer: IEmbeddingsComputer
 	) {
-		this.toolEmbeddingsComputer = new ToolEmbeddingsComputer();
+		this.toolEmbeddingsComputer = new ToolEmbeddingsComputer(embeddingsComputer, EMBEDDING_TYPE_FOR_TOOL_GROUPING);
 	}
 
 	async addGroups(query: string, root: VirtualTool, tools: LanguageModelToolInformation[], token: CancellationToken): Promise<void> {
@@ -286,7 +288,7 @@ export class VirtualToolGrouper implements IToolCategorization {
 
 	private async _getPredictedTools(query: string, tools: LanguageModelToolInformation[], token: CancellationToken): Promise<LanguageModelToolInformation[]> {
 		// compute the embeddings for the query
-		const queryEmbedding = await this.embeddingsComputer.computeEmbeddings(EmbeddingType.text3small_512, [query], {}, token);
+		const queryEmbedding = await this.embeddingsComputer.computeEmbeddings(EMBEDDING_TYPE_FOR_TOOL_GROUPING, [query], {}, token);
 		if (!queryEmbedding || queryEmbedding.values.length === 0) {
 			return [];
 		}
@@ -300,7 +302,7 @@ export class VirtualToolGrouper implements IToolCategorization {
 
 		// get the top 10 tool embeddings, but only consider available non-built-in tools
 		const availableToolNames = new Set(nonBuiltInTools.map(tool => tool.name));
-		const toolEmbeddings = await this.toolEmbeddingsComputer.retrieveSimilarEmbeddingsForAvailableTools(queryEmbeddingVector, availableToolNames, 10);
+		const toolEmbeddings = await this.toolEmbeddingsComputer.retrieveSimilarEmbeddingsForAvailableTools(queryEmbeddingVector, availableToolNames, 10, token);
 		if (!toolEmbeddings) {
 			return [];
 		}
