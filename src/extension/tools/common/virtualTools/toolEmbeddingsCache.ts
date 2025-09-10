@@ -7,6 +7,7 @@ import { Embedding, EmbeddingType, IEmbeddingsComputer, rankEmbeddings } from '.
 import { EmbeddingCacheType, IEmbeddingsCache, RemoteCacheType, RemoteEmbeddingsCache } from '../../../../platform/embeddings/common/embeddingsIndex';
 import { IEnvService } from '../../../../platform/env/common/envService';
 import { ILogService } from '../../../../platform/log/common/logService';
+import { TelemetryCorrelationId } from '../../../../util/common/telemetryCorrelationId';
 import { sanitizeVSCodeVersion } from '../../../../util/common/vscodeVersion';
 import { CancellationToken } from '../../../../util/vs/base/common/cancellation';
 import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
@@ -154,7 +155,7 @@ export class ToolEmbeddingsComputer {
 			return undefined;
 		}
 
-		const embeddings = await this.embeddingsComputer.computeEmbeddings(this.embeddingType, toolNames, {}, undefined, token);
+		const embeddings = await this.embeddingsComputer.computeEmbeddings(this.embeddingType, toolNames, {}, new TelemetryCorrelationId('ToolEmbeddingsComputer::computeEmbeddingsForTools'), token);
 
 		if (embeddings?.values.length === 0 || embeddings?.values.length !== toolNames.length) {
 			return undefined;

@@ -11,6 +11,7 @@ import { IEnvService } from '../../../../platform/env/common/envService';
 import { ILogService } from '../../../../platform/log/common/logService';
 import { IExperimentationService } from '../../../../platform/telemetry/common/nullExperimentationService';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry';
+import { TelemetryCorrelationId } from '../../../../util/common/telemetryCorrelationId';
 import { CancellationToken } from '../../../../util/vs/base/common/cancellation';
 import { groupBy } from '../../../../util/vs/base/common/collections';
 import { Iterable } from '../../../../util/vs/base/common/iterator';
@@ -304,7 +305,7 @@ export class VirtualToolGrouper implements IToolCategorization {
 
 	private async _getPredictedTools(query: string, tools: LanguageModelToolInformation[], token: CancellationToken): Promise<LanguageModelToolInformation[]> {
 		// compute the embeddings for the query
-		const queryEmbedding = await this.embeddingsComputer.computeEmbeddings(EMBEDDING_TYPE_FOR_TOOL_GROUPING, [query], {}, undefined, token);
+		const queryEmbedding = await this.embeddingsComputer.computeEmbeddings(EMBEDDING_TYPE_FOR_TOOL_GROUPING, [query], {}, new TelemetryCorrelationId('VirtualToolGrouper::_getPredictedTools'), token);
 		if (!queryEmbedding || queryEmbedding.values.length === 0) {
 			return [];
 		}
