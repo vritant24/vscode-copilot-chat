@@ -154,7 +154,7 @@ export class ToolEmbeddingsComputer {
 			return undefined;
 		}
 
-		const embeddings = await this.embeddingsComputer.computeEmbeddings(this.embeddingType, toolNames, {}, token);
+		const embeddings = await this.embeddingsComputer.computeEmbeddings(this.embeddingType, toolNames, {}, undefined, token);
 
 		if (embeddings?.values.length === 0 || embeddings?.values.length !== toolNames.length) {
 			return undefined;

@@ -304,7 +304,7 @@ export class VirtualToolGrouper implements IToolCategorization {
 
 	private async _getPredictedTools(query: string, tools: LanguageModelToolInformation[], token: CancellationToken): Promise<LanguageModelToolInformation[]> {
 		// compute the embeddings for the query
-		const queryEmbedding = await this.embeddingsComputer.computeEmbeddings(EMBEDDING_TYPE_FOR_TOOL_GROUPING, [query], {}, token);
+		const queryEmbedding = await this.embeddingsComputer.computeEmbeddings(EMBEDDING_TYPE_FOR_TOOL_GROUPING, [query], {}, undefined, token);
 		if (!queryEmbedding || queryEmbedding.values.length === 0) {
 			return [];
 		}
