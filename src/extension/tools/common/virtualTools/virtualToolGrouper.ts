@@ -43,7 +43,7 @@ export class VirtualToolGrouper implements IToolCategorization {
 		@IEnvService envService: IEnvService,
 	) {
 		const embeddingsCache = new PreComputedToolEmbeddingsCache(_instantiationService, envService, this._logService);
-		this.toolEmbeddingsComputer = new ToolEmbeddingsComputer(embeddingsCache, embeddingsComputer, EMBEDDING_TYPE_FOR_TOOL_GROUPING);
+		this.toolEmbeddingsComputer = new ToolEmbeddingsComputer(embeddingsCache, embeddingsComputer, EMBEDDING_TYPE_FOR_TOOL_GROUPING, this._logService);
 	}
 
 	async addGroups(query: string, root: VirtualTool, tools: LanguageModelToolInformation[], token: CancellationToken): Promise<void> {

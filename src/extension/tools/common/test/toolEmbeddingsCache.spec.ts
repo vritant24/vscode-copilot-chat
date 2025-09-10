@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, it, Mock, vi } from 'vitest';
 import { Embedding, EmbeddingType, rankEmbeddings } from '../../../../platform/embeddings/common/embeddingsComputer';
+import { TestLogService } from '../../../../platform/testing/common/testLogService';
 import { CancellationToken } from '../../../../util/vs/base/common/cancellation';
 import { ToolEmbeddingsComputer } from '../virtualTools/toolEmbeddingsCache';
 
@@ -31,7 +32,8 @@ describe('ToolEmbeddingsComputer', () => {
 		return new ToolEmbeddingsComputer(
 			mockEmbeddingsCache as any,
 			embeddingsComputer as any,
-			EmbeddingType.text3small_512
+			EmbeddingType.text3small_512,
+			new TestLogService()
 		);
 	}
 

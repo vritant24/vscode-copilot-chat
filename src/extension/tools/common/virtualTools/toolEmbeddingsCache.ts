@@ -6,6 +6,7 @@
 import { Embedding, EmbeddingType, IEmbeddingsComputer, rankEmbeddings } from '../../../../platform/embeddings/common/embeddingsComputer';
 import { EmbeddingCacheType, IEmbeddingsCache, RemoteCacheType, RemoteEmbeddingsCache } from '../../../../platform/embeddings/common/embeddingsIndex';
 import { IEnvService } from '../../../../platform/env/common/envService';
+import { ILogService } from '../../../../platform/log/common/logService';
 import { sanitizeVSCodeVersion } from '../../../../util/common/vscodeVersion';
 import { CancellationToken } from '../../../../util/vs/base/common/cancellation';
 import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
@@ -16,7 +17,7 @@ export class PreComputedToolEmbeddingsCache {
 	private readonly cache: IEmbeddingsCache;
 	private embeddingsMap: Map<string, Embedding> | undefined;
 
-	constructor(instantiationService: IInstantiationService, envService: IEnvService) {
+	constructor(instantiationService: IInstantiationService, envService: IEnvService, private readonly _logService: ILogService) {
 		const cacheVersion = sanitizeVSCodeVersion(envService.getEditorInfo().version);
 		this.cache = instantiationService.createInstance(RemoteEmbeddingsCache, EmbeddingCacheType.GLOBAL, 'toolEmbeddings', cacheVersion, EMBEDDING_TYPE_FOR_TOOL_GROUPING, RemoteCacheType.Tools);
 	}
@@ -34,19 +35,25 @@ export class PreComputedToolEmbeddingsCache {
 	}
 
 	private async loadEmbeddings() {
-		const embeddingsData = await this.cache.getCache<{ key: string; embedding?: Embedding }[]>();
-		const embeddingsMap = new Map<string, Embedding>();
+		try {
+			const embeddingsData = await this.cache.getCache<{ key: string; embedding?: Embedding }[]>();
+			const embeddingsMap = new Map<string, Embedding>();
 
-		if (embeddingsData) {
-			for (const { key, embedding } of embeddingsData) {
-				if (embedding === undefined) {
-					continue;
+			if (embeddingsData) {
+				for (const { key, embedding } of embeddingsData) {
+					if (embedding === undefined) {
+						this._logService.warn(`Tool embedding missing for key: ${key}`);
+						continue;
+					}
+					embeddingsMap.set(key, embedding);
 				}
-				embeddingsMap.set(key, embedding);
 			}
-		}
 
-		return embeddingsMap;
+			return embeddingsMap;
+		} catch (e) {
+			this._logService.error('Failed to load pre-computed tool embeddings', e);
+			return new Map<string, Embedding>();
+		}
 	}
 }
 
@@ -60,7 +67,8 @@ export class ToolEmbeddingsComputer {
 	constructor(
 		private readonly embeddingsCache: PreComputedToolEmbeddingsCache,
 		private readonly embeddingsComputer: IEmbeddingsComputer,
-		private readonly embeddingType: EmbeddingType
+		private readonly embeddingType: EmbeddingType,
+		private readonly _logService: ILogService
 	) {
 	}
 
@@ -126,11 +134,15 @@ export class ToolEmbeddingsComputer {
 			return;
 		}
 
-		const computedEmbeddings = await this.computeEmbeddingsForTools(missingToolNames, token);
-		if (computedEmbeddings) {
-			for (const [toolName, embedding] of computedEmbeddings) {
-				this.embeddingsStore.set(toolName, embedding);
+		try {
+			const computedEmbeddings = await this.computeEmbeddingsForTools(missingToolNames, token);
+			if (computedEmbeddings) {
+				for (const [toolName, embedding] of computedEmbeddings) {
+					this.embeddingsStore.set(toolName, embedding);
+				}
 			}
+		} catch (e) {
+			this._logService.error('Failed to compute embeddings for tools', e);
 		}
 	}
 
