@@ -9,7 +9,7 @@ import { IChatMLFetcher } from '../../../platform/chat/common/chatMLFetcher';
 import { MockChatMLFetcher } from '../../../platform/chat/test/common/mockChatMLFetcher';
 import { IDiffService } from '../../../platform/diff/common/diffService';
 import { DiffServiceImpl } from '../../../platform/diff/node/diffServiceImpl';
-import { IEmbeddingsComputer, LEGACY_EMBEDDING_MODEL_ID } from '../../../platform/embeddings/common/embeddingsComputer';
+import { EmbeddingType, IEmbeddingsComputer } from '../../../platform/embeddings/common/embeddingsComputer';
 import { RemoteEmbeddingsComputer } from '../../../platform/embeddings/common/remoteEmbeddingsComputer';
 import { IEndpointProvider } from '../../../platform/endpoint/common/endpointProvider';
 import { IModelConfig } from '../../../platform/endpoint/test/node/openaiCompatibleEndpoint';
@@ -31,11 +31,13 @@ import { NullTestProvider } from '../../../platform/testing/common/nullTestProvi
 import { TestLogService } from '../../../platform/testing/common/testLogService';
 import { ITestProvider } from '../../../platform/testing/common/testProvider';
 import { IWorkspaceChunkSearchService, NullWorkspaceChunkSearchService } from '../../../platform/workspaceChunkSearch/node/workspaceChunkSearchService';
+import { DisposableStore } from '../../../util/vs/base/common/lifecycle';
 import { SyncDescriptor } from '../../../util/vs/platform/instantiation/common/descriptors';
 import { CommandServiceImpl, ICommandService } from '../../commands/node/commandService';
 import { ILinkifyService, LinkifyService } from '../../linkify/common/linkifyService';
 import { IFeedbackReporter, NullFeedbackReporterImpl } from '../../prompt/node/feedbackReporter';
 import { IPromptVariablesService, NullPromptVariablesService } from '../../prompt/node/promptVariablesService';
+import { ITodoListContextProvider, TodoListContextProvider } from '../../prompt/node/todoListContextProvider';
 import { CodeMapperService, ICodeMapperService } from '../../prompts/node/codeMapper/codeMapperService';
 import { FixCookbookService, IFixCookbookService } from '../../prompts/node/inline/fixCookbookService';
 import { IToolsService } from '../../tools/common/toolsService';
@@ -47,14 +49,14 @@ export interface ISimulationModelConfig {
 	chatModel?: string;
 	smartChatModel?: string;
 	fastChatModel?: string;
-	embeddingModel?: LEGACY_EMBEDDING_MODEL_ID;
+	readonly embeddingType?: EmbeddingType;
 	fastRewriteModel?: string;
 	skipModelMetadataCache?: boolean;
 	customModelConfigs?: Map<string, IModelConfig>;
 }
 
-export function createExtensionUnitTestingServices(currentTestRunInfo?: any, modelConfig?: ISimulationModelConfig): TestingServiceCollection {
-	const testingServiceCollection = createPlatformServices();
+export function createExtensionUnitTestingServices(disposables: Pick<DisposableStore, 'add'> = new DisposableStore(), currentTestRunInfo?: any, modelConfig?: ISimulationModelConfig): TestingServiceCollection {
+	const testingServiceCollection = createPlatformServices(disposables);
 	testingServiceCollection.define(
 		IEndpointProvider,
 		new SyncDescriptor(TestEndpointProvider, [
@@ -91,5 +93,6 @@ export function createExtensionUnitTestingServices(currentTestRunInfo?: any, mod
 	testingServiceCollection.define(IToolGroupingCache, new SyncDescriptor(ToolGroupingCache));
 	testingServiceCollection.define(IToolGroupingService, new SyncDescriptor(ToolGroupingService));
 	testingServiceCollection.define(IEmbeddingsComputer, new SyncDescriptor(RemoteEmbeddingsComputer));
+	testingServiceCollection.define(ITodoListContextProvider, new SyncDescriptor(TodoListContextProvider));
 	return testingServiceCollection;
 }

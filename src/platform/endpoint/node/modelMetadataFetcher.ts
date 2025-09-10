@@ -21,7 +21,7 @@ import { IExperimentationService } from '../../telemetry/common/nullExperimentat
 import { ITelemetryService } from '../../telemetry/common/telemetry';
 import { ICAPIClientService } from '../common/capiClient';
 import { IDomainService } from '../common/domainService';
-import { ChatEndpointFamily, IChatModelInformation, IModelAPIResponse, isChatModelInformation } from '../common/endpointProvider';
+import { ChatEndpointFamily, IChatModelInformation, ICompletionModelInformation, IModelAPIResponse, isChatModelInformation, isCompletionModelInformation } from '../common/endpointProvider';
 import { getMaxPromptTokens } from './chatEndpoint';
 
 export interface IModelMetadataFetcher {
@@ -31,6 +31,11 @@ export interface IModelMetadataFetcher {
 	 * Does not always indicate there is a change, just that the data is fresh
 	 */
 	onDidModelsRefresh: Event<void>;
+
+	/**
+	 * Gets all the completion models known by the model fetcher endpoint
+	 */
+	getAllCompletionModels(forceRefresh: boolean): Promise<ICompletionModelInformation[]>;
 
 	/**
 	 * Gets all the chat models known by the model fetcher endpoint
@@ -61,6 +66,7 @@ export class ModelMetadataFetcher implements IModelMetadataFetcher {
 	private static readonly ALL_MODEL_KEY = 'allModels';
 
 	private _familyMap: Map<string, IModelAPIResponse[]> = new Map();
+	private _completionsFamilyMap: Map<string, IModelAPIResponse[]> = new Map();
 	private _copilotBaseModel: IModelAPIResponse | undefined;
 	private _lastFetchTime: number = 0;
 	private readonly _taskSingler = new TaskSingler<IModelAPIResponse | undefined | void>();
@@ -84,6 +90,19 @@ export class ModelMetadataFetcher implements IModelMetadataFetcher {
 		@ILogService private readonly _logService: ILogService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 	) { }
+
+	public async getAllCompletionModels(forceRefresh: boolean): Promise<ICompletionModelInformation[]> {
+		await this._taskSingler.getOrCreate(ModelMetadataFetcher.ALL_MODEL_KEY, () => this._fetchModels(forceRefresh));
+		const completionModels: ICompletionModelInformation[] = [];
+		for (const [, models] of this._completionsFamilyMap) {
+			for (const model of models) {
+				if (isCompletionModelInformation(model)) {
+					completionModels.push(model);
+				}
+			}
+		}
+		return completionModels;
+	}
 
 	public async getAllChatModels(): Promise<IChatModelInformation[]> {
 		await this._taskSingler.getOrCreate(ModelMetadataFetcher.ALL_MODEL_KEY, this._fetchModels.bind(this));
@@ -228,19 +247,17 @@ export class ModelMetadataFetcher implements IModelMetadataFetcher {
 			const data: IModelAPIResponse[] = (await response.json()).data;
 			this._requestLogger.logModelListCall(requestId, requestMetadata, data);
 			for (const model of data) {
-				// Skip completion models. We don't handle them so we only want chat + embeddings
-				if (model.capabilities.type === 'completion') {
-					continue;
-				}
+				const isCompletionModel = isCompletionModelInformation(model);
 				// The base model is whatever model is deemed "fallback" by the server
-				if (model.is_chat_fallback) {
+				if (model.is_chat_fallback && !isCompletionModel) {
 					this._copilotBaseModel = model;
 				}
 				const family = model.capabilities.family;
-				if (!this._familyMap.has(family)) {
-					this._familyMap.set(family, []);
+				const familyMap = isCompletionModel ? this._completionsFamilyMap : this._familyMap;
+				if (!familyMap.has(family)) {
+					familyMap.set(family, []);
 				}
-				this._familyMap.get(family)?.push(model);
+				familyMap.get(family)?.push(model);
 			}
 			this._lastFetchError = undefined;
 			this._onDidModelRefresh.fire();
@@ -304,7 +321,7 @@ export class ModelMetadataFetcher implements IModelMetadataFetcher {
 	private async _findExpOverride(resolvedModel: IModelAPIResponse): Promise<IModelAPIResponse | undefined> {
 		// This is a mapping of model id to model id. Allowing us to override the request for any model with a different model
 		let modelExpOverrides: { [key: string]: string } = {};
-		const expResult = this._expService.getTreatmentVariable<string>('vscode', 'copilotchat.modelOverrides');
+		const expResult = this._expService.getTreatmentVariable<string>('copilotchat.modelOverrides');
 		try {
 			modelExpOverrides = JSON.parse(expResult || '{}');
 		} catch {

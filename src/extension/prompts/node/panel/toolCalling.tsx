@@ -8,9 +8,13 @@ import { AssistantMessage, BasePromptElementProps, PromptRenderer as BasePromptR
 import type { ChatParticipantToolToken, LanguageModelToolResult2, LanguageModelToolTokenizationOptions } from 'vscode';
 import { IAuthenticationService } from '../../../../platform/authentication/common/authentication';
 import { ConfigKey, IConfigurationService } from '../../../../platform/configuration/common/configurationService';
+import { modelCanUseMcpResultImageURL } from '../../../../platform/endpoint/common/chatModelCapabilities';
 import { IEndpointProvider } from '../../../../platform/endpoint/common/endpointProvider';
 import { CacheType } from '../../../../platform/endpoint/common/endpointTypes';
 import { StatefulMarkerContainer } from '../../../../platform/endpoint/common/statefulMarkerContainer';
+import { ThinkingDataContainer } from '../../../../platform/endpoint/common/thinkingDataContainer';
+import { IFileSystemService } from '../../../../platform/filesystem/common/fileSystemService';
+import { IIgnoreService } from '../../../../platform/ignore/common/ignoreService';
 import { IImageService } from '../../../../platform/image/common/imageService';
 import { ILogService } from '../../../../platform/log/common/logService';
 import { IExperimentationService } from '../../../../platform/telemetry/common/nullExperimentationService';
@@ -19,6 +23,7 @@ import { ITokenizer } from '../../../../util/common/tokenizer';
 import { CancellationToken } from '../../../../util/vs/base/common/cancellation';
 import { toErrorMessage } from '../../../../util/vs/base/common/errorMessage';
 import { isCancellationError } from '../../../../util/vs/base/common/errors';
+import { URI, UriComponents } from '../../../../util/vs/base/common/uri';
 import { LanguageModelDataPart, LanguageModelDataPart2, LanguageModelPartAudience, LanguageModelPromptTsxPart, LanguageModelTextPart, LanguageModelTextPart2, LanguageModelToolResult } from '../../../../vscodeTypes';
 import { isImageDataPart } from '../../../conversation/common/languageModelChatMessageHelpers';
 import { IResultMetadata } from '../../../prompt/common/conversation';
@@ -27,6 +32,7 @@ import { ToolName } from '../../../tools/common/toolNames';
 import { CopilotToolMode } from '../../../tools/common/toolsRegistry';
 import { IToolsService } from '../../../tools/common/toolsService';
 import { IPromptEndpoint } from '../base/promptRenderer';
+import { Tag } from '../base/tag';
 
 export interface ChatToolCallsProps extends BasePromptElementProps {
 	readonly promptContext: IBuildPromptContext;
@@ -96,7 +102,13 @@ export class ChatToolCalls extends PromptElement<ChatToolCallsProps, void> {
 
 		// Don't include this when rendering and triggering summarization
 		const statefulMarker = round.statefulMarker && <StatefulMarkerContainer statefulMarker={{ modelId: this.promptEndpoint.model, marker: round.statefulMarker }} />;
-		children.push(<AssistantMessage toolCalls={assistantToolCalls}>{statefulMarker}{round.response}</AssistantMessage>);
+		const thinking = round.thinking && <ThinkingDataContainer thinking={round.thinking} />;
+		children.push(
+			<AssistantMessage toolCalls={assistantToolCalls}>
+				{statefulMarker}
+				{thinking}
+				{round.response}
+			</AssistantMessage>);
 
 		// Tool call elements should be rendered with the later elements first, allowed to grow to fill the available space
 		// Each tool 'reserves' 1/(N*4) of the available space just so that newer tool calls don't completely elimate
@@ -355,6 +367,35 @@ export class ToolResultMetadata extends PromptMetadata {
 	}
 }
 
+class McpLinkedResourceToolResult extends PromptElement<{ resourceUri: URI; mimeType: string | undefined } & BasePromptElementProps> {
+	public static readonly mimeType = 'application/vnd.code.resource-link';
+	private static MAX_PREVIEW_LINES = 500;
+
+	constructor(
+		props: { resourceUri: URI; mimeType: string | undefined } & BasePromptElementProps,
+		@IFileSystemService private readonly fileSystemService: IFileSystemService,
+		@IIgnoreService private readonly ignoreService: IIgnoreService,
+	) {
+		super(props);
+	}
+
+	async render() {
+		if (await this.ignoreService.isCopilotIgnored(this.props.resourceUri)) {
+			return null;
+		}
+
+		const contents = await this.fileSystemService.readFile(this.props.resourceUri);
+		const lines = new TextDecoder().decode(contents).split(/\r?\n/g);
+		const maxLines = McpLinkedResourceToolResult.MAX_PREVIEW_LINES;
+
+		return <>
+			<Tag name='resource' attrs={{ uri: this.props.resourceUri.toString(), isTruncated: lines.length > maxLines }}>
+				{lines.slice(0, maxLines).join('\n')}
+			</Tag>
+		</>;
+	}
+}
+
 interface IPrimitiveToolResultProps extends BasePromptElementProps {
 	content: LanguageModelToolResult2['content'];
 }
@@ -374,6 +415,8 @@ class PrimitiveToolResult<T extends IPrimitiveToolResultProps> extends PromptEle
 	}
 
 	async render(): Promise<PromptPiece | undefined> {
+		const hasLinkedResource = this.props.content.some(c => c instanceof LanguageModelDataPart && c.mimeType === McpLinkedResourceToolResult.mimeType);
+
 		return (
 			<>
 				<IfEmpty alt='(empty)'>
@@ -383,9 +426,12 @@ class PrimitiveToolResult<T extends IPrimitiveToolResultProps> extends PromptEle
 						} else if (part instanceof LanguageModelPromptTsxPart) {
 							return await this.onTSX(part.value as JSONTree.PromptElementJSON);
 						} else if (isImageDataPart(part)) {
+							return await this.onImage(part);
+						} else if (part instanceof LanguageModelDataPart) {
 							return await this.onData(part);
 						}
 					}))}
+					{hasLinkedResource && `Hint: you can read the full contents of any truncated resources by passing their URIs as the absolutePath to the ${ToolName.ReadFile}.\n`}
 				</IfEmpty>
 			</>
 		);
@@ -402,11 +448,22 @@ class PrimitiveToolResult<T extends IPrimitiveToolResultProps> extends PromptEle
 	}
 
 	protected async onData(part: LanguageModelDataPart) {
+		if (part.mimeType === McpLinkedResourceToolResult.mimeType) {
+			return this.onResourceLink(new TextDecoder().decode(part.data));
+		} else {
+			return '';
+		}
+	}
+
+	protected async onImage(part: LanguageModelDataPart) {
 		const githubToken = (await this.authService.getAnyGitHubSession())?.accessToken;
 		const uploadsEnabled = this.configurationService && this.experimentationService
-			? this.configurationService.getExperimentBasedConfig(ConfigKey.Internal.EnableChatImageUpload, this.experimentationService)
+			? this.configurationService.getExperimentBasedConfig(ConfigKey.EnableChatImageUpload, this.experimentationService)
 			: false;
-		const effectiveToken = uploadsEnabled ? githubToken : undefined;
+
+		// Anthropic (from CAPI) currently does not support image uploads from tool calls.
+		const effectiveToken = uploadsEnabled && modelCanUseMcpResultImageURL(this.endpoint) ? githubToken : undefined;
+
 		return Promise.resolve(imageDataPartToTSX(part, effectiveToken, this.endpoint.urlOrRequestMetadata, this.logService, this.imageService));
 	}
 
@@ -416,6 +473,10 @@ class PrimitiveToolResult<T extends IPrimitiveToolResultProps> extends PromptEle
 
 	protected onText(part: string) {
 		return Promise.resolve(part);
+	}
+
+	protected onResourceLink(data: string) {
+		return '';
 	}
 }
 
@@ -432,18 +493,6 @@ export interface IToolResultProps extends IPrimitiveToolResultProps {
  * and unfortunately I can't figure out how to work around that with the tools we have!
  */
 export class ToolResult extends PrimitiveToolResult<IToolResultProps> {
-	constructor(
-		props: PromptElementProps<IToolResultProps>,
-		@IPromptEndpoint endpoint: IPromptEndpoint,
-		@IAuthenticationService authService: IAuthenticationService,
-		@ILogService logService: ILogService,
-		@IImageService imageService: IImageService,
-		@IConfigurationService configurationService: IConfigurationService,
-		@IExperimentationService experimentationService: IExperimentationService
-	) {
-		super(props, endpoint, authService, logService, imageService, configurationService, experimentationService);
-	}
-
 	protected override async onTSX(part: JSONTree.PromptElementJSON): Promise<any> {
 		if (this.props.truncate) {
 			return <TokenLimit max={this.props.truncate}>{await super.onTSX(part)}</TokenLimit>;
@@ -471,6 +520,22 @@ export class ToolResult extends PrimitiveToolResult<IToolResultProps> {
 		const keepInSecondHalf = targetChars - keepInFirstHalf;
 
 		return content.slice(0, keepInFirstHalf) + removedMessage + content.slice(-keepInSecondHalf);
+	}
+
+	protected override onResourceLink(data: string) {
+		// https://github.com/microsoft/vscode/blob/34e38b4a78a751d006b99acee1a95d76117fec7b/src/vs/workbench/contrib/mcp/common/mcpTypes.ts#L846
+		let parsed: {
+			uri: UriComponents;
+			underlyingMimeType?: string;
+		};
+
+		try {
+			parsed = JSON.parse(data);
+		} catch {
+			return null;
+		}
+
+		return <McpLinkedResourceToolResult resourceUri={URI.revive(parsed.uri)} mimeType={parsed.underlyingMimeType} />;
 	}
 }
 

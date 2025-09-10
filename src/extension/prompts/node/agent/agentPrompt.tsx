@@ -20,7 +20,6 @@ import { ITabsAndEditorsService } from '../../../../platform/tabs/common/tabsAnd
 import { ITasksService } from '../../../../platform/tasks/common/tasksService';
 import { IExperimentationService } from '../../../../platform/telemetry/common/nullExperimentationService';
 import { IWorkspaceService } from '../../../../platform/workspace/common/workspaceService';
-import { coalesce } from '../../../../util/vs/base/common/arrays';
 import { basename } from '../../../../util/vs/base/common/path';
 import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
 import { ChatRequestEditedFileEventKind, Position, Range } from '../../../../vscodeTypes';
@@ -31,11 +30,12 @@ import { GlobalContextMessageMetadata, RenderedUserMessageMetadata, Turn } from 
 import { InternalToolReference } from '../../../prompt/common/intents';
 import { IPromptVariablesService } from '../../../prompt/node/promptVariablesService';
 import { ToolName } from '../../../tools/common/toolNames';
+import { TodoListContextPrompt } from '../../../tools/node/todoListContextPrompt';
 import { CopilotIdentityRules, GPT5CopilotIdentityRule } from '../base/copilotIdentity';
 import { IPromptEndpoint, renderPromptElement } from '../base/promptRenderer';
 import { Gpt5SafetyRule, SafetyRules } from '../base/safetyRules';
 import { Tag } from '../base/tag';
-import { TerminalAndTaskStatePromptElement } from '../base/terminalAndTaskState';
+import { TerminalStatePromptElement } from '../base/terminalState';
 import { ChatVariables } from '../panel/chatVariables';
 import { EXISTING_CODE_MARKER } from '../panel/codeBlockFormattingRules';
 import { CustomInstructions } from '../panel/customInstructions';
@@ -45,7 +45,7 @@ import { UserPreferences } from '../panel/preferences';
 import { ChatToolCalls } from '../panel/toolCalling';
 import { MultirootWorkspaceStructure } from '../panel/workspace/workspaceStructure';
 import { AgentConversationHistory } from './agentConversationHistory';
-import { AlternateGPTPrompt, CodexStyleGPTPrompt, DefaultAgentPrompt, GPT5PromptV2, SweBenchAgentPrompt } from './agentInstructions';
+import { AlternateGPTPrompt, CodexStyleGPTPrompt, DefaultAgentPrompt, DefaultAgentPromptV2, SweBenchAgentPrompt } from './agentInstructions';
 import { SummarizedConversationHistory } from './summarizedConversationHistory';
 
 export interface AgentPromptProps extends GenericBasePromptElementProps {
@@ -153,7 +153,25 @@ export class AgentPrompt extends PromptElement<AgentPromptProps> {
 						codesearchMode={this.props.codesearchMode}
 					/>;
 				case 'v2':
-					return <GPT5PromptV2
+					return <DefaultAgentPromptV2
+						availableTools={this.props.promptContext.tools?.availableTools}
+						modelFamily={this.props.endpoint.family}
+						codesearchMode={this.props.codesearchMode}
+					/>;
+				default:
+					return <DefaultAgentPrompt
+						availableTools={this.props.promptContext.tools?.availableTools}
+						modelFamily={this.props.endpoint.family}
+						codesearchMode={this.props.codesearchMode}
+					/>;
+			}
+		}
+
+		if (this.props.endpoint.family.startsWith('grok-code')) {
+			const promptType = this.configurationService.getExperimentBasedConfig(ConfigKey.GrokCodeAlternatePrompt, this.experimentationService);
+			switch (promptType) {
+				case 'v2':
+					return <DefaultAgentPromptV2
 						availableTools={this.props.promptContext.tools?.availableTools}
 						modelFamily={this.props.endpoint.family}
 						codesearchMode={this.props.codesearchMode}
@@ -335,7 +353,7 @@ export class AgentUserMessage extends PromptElement<AgentUserMessageProps> {
 			: '';
 		const hasToolsToEditNotebook = hasCreateFileTool || hasEditNotebookTool || hasReplaceStringTool || hasApplyPatchTool || hasEditFileTool;
 		const hasTodoTool = !!this.props.availableTools?.find(tool => tool.name === ToolName.CoreManageTodoList);
-
+		const shouldUseUserQuery = this.props.endpoint.family.startsWith('grok-code');
 		return (
 			<>
 				<UserMessage>
@@ -348,7 +366,8 @@ export class AgentUserMessage extends PromptElement<AgentUserMessageProps> {
 						<CurrentDatePrompt />
 						<EditedFileEvents editedFileEvents={this.props.editedFileEvents} />
 						<NotebookSummaryChange />
-						{hasTerminalTool && <TerminalAndTaskStatePromptElement sessionId={this.props.sessionId} />}
+						{hasTerminalTool && <TerminalStatePromptElement sessionId={this.props.sessionId} />}
+						{hasTodoTool && <TodoListContextPrompt sessionId={this.props.sessionId} />}
 					</Tag>
 					<CurrentEditorContext endpoint={this.props.endpoint} />
 					<RepoContext />
@@ -359,7 +378,7 @@ export class AgentUserMessage extends PromptElement<AgentUserMessageProps> {
 						<NotebookReminderInstructions chatVariables={this.props.chatVariables} query={this.props.request} />
 						{getExplanationReminder(this.props.endpoint.family, hasTodoTool)}
 					</Tag>
-					{query && <Tag name='userRequest' priority={900} flexGrow={7}>{query + attachmentHint}</Tag>}
+					{query && <Tag name={shouldUseUserQuery ? 'user_query' : 'userRequest'} priority={900} flexGrow={7}>{query + attachmentHint}</Tag>}
 					{this.props.enableCacheBreakpoints && <cacheBreakpoint type={CacheType} />}
 				</UserMessage>
 			</>
@@ -368,7 +387,7 @@ export class AgentUserMessage extends PromptElement<AgentUserMessageProps> {
 }
 
 interface FrozenMessageContentProps extends BasePromptElementProps {
-	readonly frozenContent: Raw.ChatCompletionContentPart[];
+	readonly frozenContent: readonly Raw.ChatCompletionContentPart[];
 	readonly enableCacheBreakpoints?: boolean;
 }
 
@@ -410,7 +429,7 @@ class ToolReferencesHint extends PromptElement<ToolReferencesHintProps> {
 	}
 }
 
-export function renderedMessageToTsxChildren(message: string | Raw.ChatCompletionContentPart[], enableCacheBreakpoints: boolean): PromptPieceChild[] {
+export function renderedMessageToTsxChildren(message: string | readonly Raw.ChatCompletionContentPart[], enableCacheBreakpoints: boolean): PromptPieceChild[] {
 	if (typeof message === 'string') {
 		return [message];
 	}
@@ -445,11 +464,18 @@ class UserShellPrompt extends PromptElement<BasePromptElementProps> {
 	}
 
 	async render(state: void, sizing: PromptSizing) {
-		const shellName = basename(this.envService.shell);
+		const shellName: string = basename(this.envService.shell);
 		const shellNameHint = shellName === 'powershell.exe' ? ' (Windows PowerShell v5.1)' : '';
 		let additionalHint = '';
-		if (shellName === 'powershell.exe') {
-			additionalHint = ' Use the `;` character if joining commands on a single line is needed.';
+		switch (shellName) {
+			case 'powershell.exe': {
+				additionalHint = ' Use the `;` character if joining commands on a single line is needed.';
+				break;
+			}
+			case 'fish': {
+				additionalHint = ' Note that fish shell does not support heredocs - prefer printf or echo instead.';
+				break;
+			}
 		}
 		return <>The user's default shell is: "{shellName}"{shellNameHint}. When you generate terminal commands, please generate them correctly for this shell.{additionalHint}</>;
 	}
@@ -472,7 +498,7 @@ class CurrentDatePrompt extends PromptElement<BasePromptElementProps> {
 }
 
 interface CurrentEditorContextProps extends BasePromptElementProps {
-	endpoint: IChatEndpoint;
+	readonly endpoint: IChatEndpoint;
 }
 
 /**
@@ -607,17 +633,12 @@ class AgentTasksInstructions extends PromptElement {
 		props: BasePromptElementProps,
 		@ITasksService private readonly _tasksService: ITasksService,
 		@IPromptPathRepresentationService private readonly _promptPathRepresentationService: IPromptPathRepresentationService,
-		@IConfigurationService private readonly _configurationService: IConfigurationService,
 	) {
 		super(props);
 	}
 
 	render() {
 		const taskGroupsRaw = this._tasksService.getTasks();
-		if (!this._configurationService.getConfig(ConfigKey.AgentCanRunTasks)) {
-			return null;
-		}
-
 		const taskGroups = taskGroupsRaw.map(([wf, tasks]) => [wf, tasks.filter(task => (!!task.type || task.dependsOn) && !task.hide)] as const).filter(([, tasks]) => tasks.length > 0);
 		if (taskGroups.length === 0) {
 			return 0;
@@ -632,7 +653,7 @@ class AgentTasksInstructions extends PromptElement {
 						return (
 							<Tag name='task' attrs={{ id: t.type ? `${t.type}: ${t.label || i}` : `${t.label || i}` }}>
 								{this.makeTaskPresentation(t)}
-								{isActive && <> (This task is currently running. You can use the {ToolName.CoreGetTaskOutput} or {ToolName.GetTaskOutput} tool to view its output.)</>}
+								{isActive && <> (This task is currently running. You can use the {ToolName.CoreGetTaskOutput} tool to view its output.)</>}
 							</Tag>
 						);
 					})}
@@ -694,7 +715,7 @@ export function getEditingReminder(hasEditFileTool: boolean, hasReplaceStringToo
 }
 
 export interface IKeepGoingReminderProps extends BasePromptElementProps {
-	modelFamily: string | undefined;
+	readonly modelFamily: string | undefined;
 }
 
 export class KeepGoingReminder extends PromptElement<IKeepGoingReminderProps> {
@@ -727,8 +748,8 @@ export class KeepGoingReminder extends PromptElement<IKeepGoingReminderProps> {
 					After any parallel, read-only context gathering, give a concise progress update and what's next.<br />
 					Avoid repetition across turns: don't restate unchanged plans or sections (like the todo list) verbatim; provide delta updates or only the parts that changed.<br />
 					Tool batches: You MUST preface each batch with a one-sentence why/what/outcome preamble.<br />
-					Progress cadence: After 3 to 5 tool calls, or when you create/edit &gt; ~3 files in a burst, pause and post a compact checkpoint.<br />
-					Requirements coverage: Read the user's ask in full, extract each requirement into checklist items, and keep them visible. Do not omit a requirement. If something cannot be done with available tools, note why briefly and propose a viable alternative.<br />
+					Progress cadence: After 3 to 5 tool calls, or when you create/edit &gt; ~3 files in a burst, report progress.<br />
+					Requirements coverage: Read the user's ask in full and think carefully. Do not omit a requirement. If something cannot be done with available tools, note why briefly and propose a viable alternative.<br />
 				</>;
 			} else {
 				// Original reminder
@@ -742,20 +763,21 @@ export class KeepGoingReminder extends PromptElement<IKeepGoingReminderProps> {
 }
 
 function getExplanationReminder(modelFamily: string | undefined, hasTodoTool?: boolean) {
+	const isGpt5Mini = modelFamily === 'gpt-5-mini';
 	return modelFamily?.startsWith('gpt-5') === true ?
 		<>
-			Skip filler acknowledgements like “Sounds good” or “Okay, I will…”. Open with a purposeful one-liner about what you're doing next.<br />
+			Skip filler acknowledgements like "Sounds good" or "Okay, I will…". Open with a purposeful one-liner about what you're doing next.<br />
 			When sharing setup or run steps, present terminal commands in fenced code blocks with the correct language tag. Keep commands copyable and on separate lines.<br />
 			Avoid definitive claims about the build or runtime setup unless verified from the provided context (or quick tool checks). If uncertain, state what's known from attachments and proceed with minimal steps you can adapt later.<br />
 			When you create or edit runnable code, run a test yourself to confirm it works; then share optional fenced commands for more advanced runs.<br />
 			For non-trivial code generation, produce a complete, runnable solution: necessary source files, a tiny runner or test/benchmark harness, a minimal `README.md`, and updated dependency manifests (e.g., `package.json`, `requirements.txt`, `pyproject.toml`). Offer quick "try it" commands and optional platform-specific speed-ups when relevant.<br />
 			Your goal is to act like a pair programmer: be friendly and helpful. If you can do more, do more. Be proactive with your solutions, think about what the user needs and what they want, and implement it proactively.<br />
 			<Tag name='importantReminders'>
-				Before starting a task, review and follow the guidance in &lt;responseModeHints&gt;, &lt;engineeringMindsetHints&gt;, and &lt;requirementsUnderstanding&gt;.
-				ALWAYS start your response with a brief task receipt and a concise high-level plan for how you will proceed.<br />
+				Before starting a task, review and follow the guidance in &lt;responseModeHints&gt;, &lt;engineeringMindsetHints&gt;, and &lt;requirementsUnderstanding&gt;.<br />
+				{!isGpt5Mini && <>Start your response with a brief acknowledgement, followed by a concise high-level plan outlining your approach.<br /></>}
 				DO NOT state your identity or model name unless the user explicitly asks you to. <br />
 				{hasTodoTool && <>You MUST use the todo list tool to plan and track your progress. NEVER skip this step, and START with this step whenever the task is multi-step. This is essential for maintaining visibility and proper execution of large tasks. Follow the todoListToolInstructions strictly.<br /></>}
-				{!hasTodoTool && <>Break down the request into clear, actionable steps and present them as a checklist at the beginning of your response before proceeding with implementation. This helps maintain visibility and ensures all requirements are addressed systematically.<br /></>}
+				{!hasTodoTool && <>Break down the request into clear, actionable steps and present them at the beginning of your response before proceeding with implementation. This helps maintain visibility and ensures all requirements are addressed systematically.<br /></>}
 				When referring to a filename or symbol in the user's workspace, wrap it in backticks.<br />
 			</Tag>
 		</>
@@ -780,27 +802,50 @@ export class EditedFileEvents extends PromptElement<EditedFileEventsProps> {
 	async render(state: void, sizing: PromptSizing) {
 		const events = this.props.editedFileEvents;
 
-		const eventStrs = events && coalesce(events.map(event => this.editedFileEventToString(event)));
-		if (eventStrs && eventStrs.length > 0) {
-			return (
-				<>
-					The user has taken some actions between the last request and now:<br />
-					{eventStrs.map(str => `- ${str}`).join('\n')}<br />
-					So be sure to check the current file contents before making any new edits.
-				</>);
-		} else {
+		if (!events || events.length === 0) {
 			return undefined;
 		}
-	}
 
-	private editedFileEventToString(event: ChatRequestEditedFileEvent): string | undefined {
-		switch (event.eventKind) {
-			case ChatRequestEditedFileEventKind.Keep:
-				return undefined;
-			case ChatRequestEditedFileEventKind.Undo:
-				return `Undone your edits to ${this.promptPathRepresentationService.getFilePath(event.uri)}`;
-			case ChatRequestEditedFileEventKind.UserModification:
-				return `Made manual edits to ${this.promptPathRepresentationService.getFilePath(event.uri)}`;
+		// Group by event kind and collect file paths
+		const undoFiles: string[] = [];
+		const modFiles: string[] = [];
+		const seenUndo = new Set<string>();
+		const seenMod = new Set<string>();
+
+		for (const event of events) {
+			if (event.eventKind === ChatRequestEditedFileEventKind.Undo) {
+				const fp = this.promptPathRepresentationService.getFilePath(event.uri);
+				if (!seenUndo.has(fp)) { seenUndo.add(fp); undoFiles.push(fp); }
+			} else if (event.eventKind === ChatRequestEditedFileEventKind.UserModification) {
+				const fp = this.promptPathRepresentationService.getFilePath(event.uri);
+				if (!seenMod.has(fp)) { seenMod.add(fp); modFiles.push(fp); }
+			}
 		}
+
+		if (undoFiles.length === 0 && modFiles.length === 0) {
+			return undefined;
+		}
+
+		const sections: string[] = [];
+		if (undoFiles.length > 0) {
+			sections.push([
+				'The user undid your edits to:',
+				...undoFiles.map(f => `- ${f}`)
+			].join('\n'));
+		}
+		if (modFiles.length > 0) {
+			sections.push([
+				'Some edits were made, by the user or possibly by a formatter or another automated tool, to:',
+				...modFiles.map(f => `- ${f}`)
+			].join('\n'));
+		}
+
+		return (
+			<>
+				There have been some changes between the last request and now.<br />
+				{sections.join('\n')}<br />
+				So be sure to check the current file contents before making any new edits.
+			</>
+		);
 	}
 }
