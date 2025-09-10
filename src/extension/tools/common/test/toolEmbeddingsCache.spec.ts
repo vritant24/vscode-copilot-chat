@@ -22,10 +22,17 @@ describe('ToolEmbeddingsComputer', () => {
 	const token = CancellationToken.None;
 
 	function createToolEmbeddingComputer(embeddings: Map<string, Embedding>, embeddingsComputer = { _serviceBrand: undefined, computeEmbeddings: vi.fn() }) {
-		const tec = new ToolEmbeddingsComputer(embeddingsComputer, EmbeddingType.text3small_512);
+		// Mock PreComputedToolEmbeddingsCache
+		const mockEmbeddingsCache = {
+			embeddingType: EmbeddingType.text3small_512,
+			getEmbeddings: vi.fn().mockResolvedValue(embeddings)
+		};
 
-		vi.spyOn(tec['preComputedLoader'], 'loadEmbeddingsAsMap').mockResolvedValue(embeddings);
-		return tec;
+		return new ToolEmbeddingsComputer(
+			mockEmbeddingsCache as any,
+			embeddingsComputer as any,
+			EmbeddingType.text3small_512
+		);
 	}
 
 	function createMockEmbedding(value: number[]): Embedding {
@@ -150,10 +157,21 @@ describe('ToolEmbeddingsComputer', () => {
 			{ value: 'tool1', distance: { value: 0.4, embeddingType: EmbeddingType.text3small_512 } },
 			{ value: 'tool4', distance: { value: 0.7, embeddingType: EmbeddingType.text3small_512 } }
 		]);
+
+		// Create mock embeddings computer that returns embeddings for missing tools
+		const computeEmbeddingsMock = vi.fn().mockResolvedValue({
+			values: [
+				createMockEmbedding([0.7, 0.3, 0]), // tool3
+				createMockEmbedding([0.5, 0.5, 0])  // tool4
+			]
+		});
+		const embeddingsComputerMock = { _serviceBrand: undefined, computeEmbeddings: computeEmbeddingsMock };
+
 		const computer = createToolEmbeddingComputer(new Map([
 			['tool1', createMockEmbedding([0.9, 0.1, 0])],
 			['tool2', createMockEmbedding([0.8, 0.2, 0])]
-		]));
+		]), embeddingsComputerMock);
+
 		const result = await computer.retrieveSimilarEmbeddingsForAvailableTools(
 			queryEmbedding,
 			availableTools,
@@ -163,8 +181,8 @@ describe('ToolEmbeddingsComputer', () => {
 		expect(result).toHaveLength(2);
 		expect(result[0]).toBe('tool1');
 		expect(result[1]).toBe('tool4');
-		expect(computer['embeddingsComputer'].computeEmbeddings).toHaveBeenCalledTimes(1);
-		expect((computer['embeddingsComputer'].computeEmbeddings as Mock).mock.calls[0][1]).toEqual(['tool3', 'tool4']);
+		expect(computeEmbeddingsMock).toHaveBeenCalledTimes(1);
+		expect(computeEmbeddingsMock.mock.calls[0][1]).toEqual(['tool3', 'tool4']);
 	});
 
 	it('shoulds cache computed embeddings for future use', async () => {

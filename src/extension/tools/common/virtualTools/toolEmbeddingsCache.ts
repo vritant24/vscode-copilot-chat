@@ -3,53 +3,50 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Embedding, EmbeddingType, EmbeddingVector, IEmbeddingsComputer, rankEmbeddings } from '../../../../platform/embeddings/common/embeddingsComputer';
-import { IEmbeddingsCache } from '../../../../platform/embeddings/common/embeddingsIndex';
+import { Embedding, EmbeddingType, IEmbeddingsComputer, rankEmbeddings } from '../../../../platform/embeddings/common/embeddingsComputer';
+import { EmbeddingCacheType, IEmbeddingsCache, RemoteCacheType, RemoteEmbeddingsCache } from '../../../../platform/embeddings/common/embeddingsIndex';
+import { IEnvService } from '../../../../platform/env/common/envService';
+import { sanitizeVSCodeVersion } from '../../../../util/common/vscodeVersion';
 import { CancellationToken } from '../../../../util/vs/base/common/cancellation';
+import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
 
-/**
- * Loads pre-computed tool embeddings from a JSON file
- */
-class PreComputedEmbeddingsLoader implements IEmbeddingsCache {
-	public embeddingType: EmbeddingType = EmbeddingType.text3small_512;
+export const EMBEDDING_TYPE_FOR_TOOL_GROUPING = EmbeddingType.text3small_512;
 
-	private embeddings: { [key: string]: { embedding: EmbeddingVector } } | undefined = undefined;
+export class PreComputedToolEmbeddingsCache {
+	private readonly cache: IEmbeddingsCache;
+	private embeddingsMap: Map<string, Embedding> | undefined;
 
-	async getCache<T = { [key: string]: { embedding: EmbeddingVector } }>(): Promise<T | undefined> {
-		return this.loadEmbeddings() as Promise<T>;
+	constructor(instantiationService: IInstantiationService, envService: IEnvService) {
+		const cacheVersion = sanitizeVSCodeVersion(envService.getEditorInfo().version);
+		this.cache = instantiationService.createInstance(RemoteEmbeddingsCache, EmbeddingCacheType.GLOBAL, 'toolEmbeddings', cacheVersion, EMBEDDING_TYPE_FOR_TOOL_GROUPING, RemoteCacheType.Tools);
 	}
 
-	clearCache(): Promise<void> {
-		this.embeddings = undefined;
-		return Promise.resolve();
+	public get embeddingType(): EmbeddingType {
+		return this.cache.embeddingType;
 	}
 
-	async loadEmbeddingsAsMap(): Promise<Map<string, Embedding>> {
-		const embeddingsData = await this.loadEmbeddings();
+	public async getEmbeddings(): Promise<ReadonlyMap<string, Readonly<Embedding>>> {
+		if (!this.embeddingsMap) {
+			this.embeddingsMap = await this.loadEmbeddings();
+		}
+
+		return this.embeddingsMap;
+	}
+
+	private async loadEmbeddings() {
+		const embeddingsData = await this.cache.getCache<{ key: string; embedding?: Embedding }[]>();
 		const embeddingsMap = new Map<string, Embedding>();
 
 		if (embeddingsData) {
-			for (const [key, value] of Object.entries(embeddingsData)) {
-				embeddingsMap.set(key, {
-					type: EmbeddingType.text3small_512,
-					value: value.embedding
-				});
+			for (const { key, embedding } of embeddingsData) {
+				if (embedding === undefined) {
+					continue;
+				}
+				embeddingsMap.set(key, embedding);
 			}
 		}
 
 		return embeddingsMap;
-	}
-
-	private async loadEmbeddings(): Promise<{ [key: string]: { embedding: EmbeddingVector } }> {
-		if (!this.embeddings) {
-			const embeddingsFile = (await import('./allRoolEmbeddings.json'));
-			this.embeddings = {};
-			for (const [key, value] of Object.entries(embeddingsFile.default)) {
-				this.embeddings[key] = { embedding: value as unknown as EmbeddingVector };
-			}
-		}
-
-		return this.embeddings;
 	}
 }
 
@@ -57,15 +54,14 @@ class PreComputedEmbeddingsLoader implements IEmbeddingsCache {
  * Manages tool embeddings from both pre-computed cache and runtime computation
  */
 export class ToolEmbeddingsComputer {
-	private readonly preComputedLoader: PreComputedEmbeddingsLoader;
 	private readonly embeddingsStore = new Map<string, Embedding>();
 	private isInitialized = false;
 
 	constructor(
+		private readonly embeddingsCache: PreComputedToolEmbeddingsCache,
 		private readonly embeddingsComputer: IEmbeddingsComputer,
 		private readonly embeddingType: EmbeddingType
 	) {
-		this.preComputedLoader = new PreComputedEmbeddingsLoader();
 	}
 
 	/**
@@ -96,7 +92,7 @@ export class ToolEmbeddingsComputer {
 			return;
 		}
 
-		const preComputedEmbeddings = await this.preComputedLoader.loadEmbeddingsAsMap();
+		const preComputedEmbeddings = await this.embeddingsCache.getEmbeddings();
 		for (const [toolName, embedding] of preComputedEmbeddings) {
 			this.embeddingsStore.set(toolName, embedding);
 		}

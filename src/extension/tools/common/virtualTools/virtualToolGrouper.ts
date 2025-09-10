@@ -5,8 +5,9 @@
 
 import type { LanguageModelToolInformation } from 'vscode';
 import { CHAT_MODEL, ConfigKey, HARD_TOOL_LIMIT, IConfigurationService } from '../../../../platform/configuration/common/configurationService';
-import { EmbeddingType, IEmbeddingsComputer } from '../../../../platform/embeddings/common/embeddingsComputer';
+import { IEmbeddingsComputer } from '../../../../platform/embeddings/common/embeddingsComputer';
 import { IEndpointProvider } from '../../../../platform/endpoint/common/endpointProvider';
+import { IEnvService } from '../../../../platform/env/common/envService';
 import { ILogService } from '../../../../platform/log/common/logService';
 import { IExperimentationService } from '../../../../platform/telemetry/common/nullExperimentationService';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry';
@@ -14,8 +15,9 @@ import { CancellationToken } from '../../../../util/vs/base/common/cancellation'
 import { groupBy } from '../../../../util/vs/base/common/collections';
 import { Iterable } from '../../../../util/vs/base/common/iterator';
 import { StopWatch } from '../../../../util/vs/base/common/stopwatch';
+import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
 import { LanguageModelToolExtensionSource, LanguageModelToolMCPSource } from '../../../../vscodeTypes';
-import { ToolEmbeddingsComputer } from './toolEmbeddingsCache';
+import { EMBEDDING_TYPE_FOR_TOOL_GROUPING, PreComputedToolEmbeddingsCache, ToolEmbeddingsComputer } from './toolEmbeddingsCache';
 import { VIRTUAL_TOOL_NAME_PREFIX, VirtualTool } from './virtualTool';
 import { divideToolsIntoExistingGroups, divideToolsIntoGroups, summarizeToolGroup } from './virtualToolSummarizer';
 import { ISummarizedToolCategory, IToolCategorization, IToolGroupingCache } from './virtualToolTypes';
@@ -25,8 +27,6 @@ const BUILT_IN_GROUP = 'builtin';
 const CATEGORIZATION_ENDPOINT = CHAT_MODEL.GPT4OMINI;
 const SUMMARY_PREFIX = 'Call this tool when you need access to a new category of tools. The category of tools is described as follows:\n\n';
 const SUMMARY_SUFFIX = '\n\nBe sure to call this tool if you need a capability related to the above.';
-
-const EMBEDDING_TYPE_FOR_TOOL_GROUPING = EmbeddingType.text3small_512;
 
 export class VirtualToolGrouper implements IToolCategorization {
 	private readonly toolEmbeddingsComputer: ToolEmbeddingsComputer;
@@ -39,8 +39,11 @@ export class VirtualToolGrouper implements IToolCategorization {
 		@IEmbeddingsComputer private readonly embeddingsComputer: IEmbeddingsComputer,
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
 		@IExperimentationService private readonly _expService: IExperimentationService,
+		@IInstantiationService _instantiationService: IInstantiationService,
+		@IEnvService envService: IEnvService,
 	) {
-		this.toolEmbeddingsComputer = new ToolEmbeddingsComputer(embeddingsComputer, EMBEDDING_TYPE_FOR_TOOL_GROUPING);
+		const embeddingsCache = new PreComputedToolEmbeddingsCache(_instantiationService, envService, this._logService);
+		this.toolEmbeddingsComputer = new ToolEmbeddingsComputer(embeddingsCache, embeddingsComputer, EMBEDDING_TYPE_FOR_TOOL_GROUPING);
 	}
 
 	async addGroups(query: string, root: VirtualTool, tools: LanguageModelToolInformation[], token: CancellationToken): Promise<void> {
