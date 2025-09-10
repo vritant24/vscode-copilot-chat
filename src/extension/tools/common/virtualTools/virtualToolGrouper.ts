@@ -96,7 +96,7 @@ export class VirtualToolGrouper implements IToolCategorization {
 		const virtualToolEmbeddingRankingEnabled = this._configurationService.getExperimentBasedConfig(ConfigKey.Internal.VirtualToolEmbeddingRanking, this._expService);
 
 		if (virtualToolEmbeddingRankingEnabled) {
-			const predictedTools = await this._getPredictedTools(query, root.contents as LanguageModelToolInformation[], token);
+			const predictedTools = await this._getPredictedTools(query, tools, token);
 
 			this._expandGroupsWithPredictedTools(root, predictedTools);
 		}
@@ -142,6 +142,12 @@ export class VirtualToolGrouper implements IToolCategorization {
 		// Create a set of predicted tool names for fast lookup
 		const predictedToolNames = new Set(predictedTools.map(tool => tool.name));
 
+		// create a map of tool name to its priority (index in predictedTools array)
+		const toolPriority = new Map<string, number>();
+		predictedTools.forEach((tool, index) => {
+			toolPriority.set(tool.name, index);
+		});
+
 		// Get unexpanded virtual tools that contain predicted tools
 		const expandableGroupsWithPredictedTools = root.contents
 			.filter((t): t is VirtualTool => {
@@ -157,12 +163,12 @@ export class VirtualToolGrouper implements IToolCategorization {
 				// Sort by highest priority predicted tool in each group
 				const aMaxPriority = Math.min(...a.contents
 					.filter(tool => 'name' in tool && predictedToolNames.has(tool.name))
-					.map(tool => predictedTools.findIndex(pt => pt.name === tool.name))
+					.map(tool => toolPriority.get(tool.name) ?? -1)
 					.filter(index => index !== -1)
 				);
 				const bMaxPriority = Math.min(...b.contents
 					.filter(tool => 'name' in tool && predictedToolNames.has(tool.name))
-					.map(tool => predictedTools.findIndex(pt => pt.name === tool.name))
+					.map(tool => toolPriority.get(tool.name) ?? -1)
 					.filter(index => index !== -1)
 				);
 				return aMaxPriority - bMaxPriority; // Lower index = higher priority
@@ -301,20 +307,20 @@ export class VirtualToolGrouper implements IToolCategorization {
 		}
 		const queryEmbeddingVector = queryEmbedding.values[0];
 
-		// Filter out built-in tools - only consider extension and MCP tools for similarity computation
+		// Filter out built-in tools. Only consider extension and MCP tools for similarity computation
 		const nonBuiltInTools = tools.filter(tool =>
 			tool.source instanceof LanguageModelToolExtensionSource ||
 			tool.source instanceof LanguageModelToolMCPSource
 		);
 
-		// get the top 10 tool embeddings, but only consider available non-built-in tools
+		// Get the top 10 tool embeddings for the non-built-in tools
 		const availableToolNames = new Set(nonBuiltInTools.map(tool => tool.name));
 		const toolEmbeddings = await this.toolEmbeddingsComputer.retrieveSimilarEmbeddingsForAvailableTools(queryEmbeddingVector, availableToolNames, 10, token);
 		if (!toolEmbeddings) {
 			return [];
 		}
 
-		// filter the tools by the top 10 tool embeddings, maintaining order
+		// Filter the tools by the top 10 tool embeddings, maintaining order
 		const toolNameToTool = new Map(tools.map(tool => [tool.name, tool]));
 		const predictedTools = toolEmbeddings
 			.map((toolName: string) => toolNameToTool.get(toolName))
