@@ -705,6 +705,8 @@ export namespace ConfigKey {
 
 		export const PromptFileContext = defineExpSetting<boolean>('chat.advanced.promptFileContextProvider.enabled', true);
 		export const MultiReplaceString = defineExpSetting<boolean>('chat.advanced.multiReplaceString.enabled', false, INTERNAL);
+
+		export const VirtualToolEmbeddingRanking = defineExpSetting<boolean>('chat.virtualTools.embeddingRanking', false, INTERNAL);
 	}
 
 	export const AgentThinkingTool = defineSetting<boolean>('chat.agent.thinkingTool', false);

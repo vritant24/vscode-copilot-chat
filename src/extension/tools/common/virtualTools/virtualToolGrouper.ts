@@ -4,10 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type { LanguageModelToolInformation } from 'vscode';
-import { CHAT_MODEL, HARD_TOOL_LIMIT } from '../../../../platform/configuration/common/configurationService';
+import { CHAT_MODEL, ConfigKey, HARD_TOOL_LIMIT, IConfigurationService } from '../../../../platform/configuration/common/configurationService';
 import { EmbeddingType, IEmbeddingsComputer } from '../../../../platform/embeddings/common/embeddingsComputer';
 import { IEndpointProvider } from '../../../../platform/endpoint/common/endpointProvider';
 import { ILogService } from '../../../../platform/log/common/logService';
+import { IExperimentationService } from '../../../../platform/telemetry/common/nullExperimentationService';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry';
 import { CancellationToken } from '../../../../util/vs/base/common/cancellation';
 import { groupBy } from '../../../../util/vs/base/common/collections';
@@ -35,7 +36,9 @@ export class VirtualToolGrouper implements IToolCategorization {
 		@IToolGroupingCache private readonly _cache: IToolGroupingCache,
 		@ITelemetryService private readonly _telemetryService: ITelemetryService,
 		@ILogService private readonly _logService: ILogService,
-		@IEmbeddingsComputer private readonly embeddingsComputer: IEmbeddingsComputer
+		@IEmbeddingsComputer private readonly embeddingsComputer: IEmbeddingsComputer,
+		@IConfigurationService private readonly _configurationService: IConfigurationService,
+		@IExperimentationService private readonly _expService: IExperimentationService,
 	) {
 		this.toolEmbeddingsComputer = new ToolEmbeddingsComputer(embeddingsComputer, EMBEDDING_TYPE_FOR_TOOL_GROUPING);
 	}
@@ -90,10 +93,14 @@ export class VirtualToolGrouper implements IToolCategorization {
 			}
 		}
 
-		const predictedTools = await this._getPredictedTools(query, root.contents as LanguageModelToolInformation[], token);
-		console.info(`Predicted tools for query "${query}": ${predictedTools.map(t => t.name).join(', ')}`);
+		const virtualToolEmbeddingRankingEnabled = this._configurationService.getExperimentBasedConfig(ConfigKey.Internal.VirtualToolEmbeddingRanking, this._expService);
 
-		this._expandGroupsWithPredictedTools(root, predictedTools);
+		if (virtualToolEmbeddingRankingEnabled) {
+			const predictedTools = await this._getPredictedTools(query, root.contents as LanguageModelToolInformation[], token);
+
+			this._expandGroupsWithPredictedTools(root, predictedTools);
+		}
+
 		this._reExpandToolsToHitBudget(root);
 	}
 
