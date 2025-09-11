@@ -24,7 +24,7 @@
 	"icon": "assets/copilot.png",
 	"pricing": "Trial",
 	"engines": {
-		"vscode": "^1.104.0-20250905",
+		"vscode": "^1.105.0-20250905",
 		"npm": ">=9.0.0",
 		"node": ">=22.14.0"
 	},
@@ -135,7 +135,8 @@
 		"taskExecutionTerminal",
 		"dataChannels",
 		"languageModelThinkingPart",
-		"chatSessionsProvider"
+		"chatSessionsProvider",
+		"devDeviceId"
 	],
 	"contributes": {
 		"languageModelTools": [
@@ -2011,6 +2012,13 @@
 				"category": "GitHub Copilot"
 			},
 			{
+				"command": "github.copilot.git.resolveMergeConflicts",
+				"title": "%github.copilot.git.resolveMergeConflicts%",
+				"icon": "$(chat-sparkle)",
+				"enablement": "!github.copilot.interactiveSession.disabled",
+				"category": "GitHub Copilot"
+			},
+			{
 				"command": "github.copilot.devcontainer.generateDevContainerConfig",
 				"title": "%github.copilot.devcontainer.generateDevContainerConfig%",
 				"category": "GitHub Copilot"
@@ -3139,6 +3147,10 @@
 					"when": "false"
 				},
 				{
+					"command": "github.copilot.git.resolveMergeConflicts",
+					"when": "false"
+				},
+				{
 					"command": "github.copilot.chat.explain",
 					"when": "false"
 				},
@@ -3477,6 +3489,11 @@
 				}
 			],
 			"scm/resourceState/context": [
+				{
+					"command": "github.copilot.git.resolveMergeConflicts",
+					"when": "scmProvider == git && scmResourceGroup == merge",
+					"group": "z_chat@1"
+				},
 				{
 					"command": "github.copilot.chat.review.stagedFileChange",
 					"group": "3_copilot",
