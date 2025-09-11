@@ -117,12 +117,7 @@ export class ToolEmbeddingsComputer {
 			return;
 		}
 
-		const missingTools: string[] = [];
-		toolNames.forEach(t => {
-			if (!this.embeddingsStore.has(t)) {
-				missingTools.push(t);
-			}
-		});
+		const missingTools = [...toolNames].filter(t => !this.embeddingsStore.has(t));
 		await this.computeMissingEmbeddings(missingTools, token);
 	}
 
