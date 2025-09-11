@@ -5,7 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LanguageModelToolInformation } from 'vscode';
-import { HARD_TOOL_LIMIT } from '../../../../../platform/configuration/common/configurationService';
+import { HARD_TOOL_LIMIT, IConfigurationService } from '../../../../../platform/configuration/common/configurationService';
+import { EmbeddingType, IEmbeddingsComputer } from '../../../../../platform/embeddings/common/embeddingsComputer';
 import { IVSCodeExtensionContext } from '../../../../../platform/extContext/common/extensionContext';
 import { ITestingServicesAccessor } from '../../../../../platform/test/node/services';
 import { CancellationToken } from '../../../../../util/vs/base/common/cancellation';
@@ -544,36 +545,9 @@ describe('Virtual Tools - Grouper', () => {
 	});
 
 	describe('_expandGroupsWithPredictedTools', () => {
-		let mockToolEmbeddingsComputer: any;
-		let mockConfigurationService: any;
-		let mockExpService: any;
-		let mockEmbeddingsComputer: any;
-
 		beforeEach(() => {
-			// Mock the EmbeddingsComputer
-			mockEmbeddingsComputer = {
-				computeEmbeddings: vi.fn().mockResolvedValue({
-					type: { id: 'test-embedding-type' },
-					values: [[0.1, 0.2, 0.3, 0.4, 0.5]] // Mock embedding vector
-				})
-			};
-
-			// Mock the ToolEmbeddingsComputer completely
-			mockToolEmbeddingsComputer = {
-				retrieveSimilarEmbeddingsForAvailableTools: vi.fn().mockResolvedValue(['predicted_tool1', 'predicted_tool2'])
-			};
-
-			mockExpService = {};
-			mockConfigurationService = {
-				getExperimentBasedConfig: vi.fn().mockReturnValue(true)
-			};
-
-			// Replace the dependencies in the grouper instance
-			(grouper as any).embeddingsComputer = mockEmbeddingsComputer;
-			(grouper as any).toolEmbeddingsComputer = mockToolEmbeddingsComputer;
-			(grouper as any)._configurationService = mockConfigurationService;
-			(grouper as any)._expService = mockExpService;
-
+			const configurationService = accessor.get(IConfigurationService);
+			vi.spyOn(configurationService, 'getExperimentBasedConfig').mockReturnValue(true);
 		});
 
 		it('should expand virtual tools containing predicted tools in priority order', async () => {
@@ -620,6 +594,15 @@ describe('Virtual Tools - Grouper', () => {
 				makeTool('predicted_tool1'), // Index 0 - highest priority
 				makeTool('predicted_tool2')  // Index 1 - lower priority
 			];
+
+			const embeddingsComputer = accessor.get(IEmbeddingsComputer);
+			vi.spyOn(embeddingsComputer, 'computeEmbeddings').mockResolvedValue({
+				type: EmbeddingType.text3small_512,
+				values: [{
+					type: EmbeddingType.text3small_512,
+					value: [0.1, 0.2, 0.3, 0.4, 0.5]
+				}]
+			});
 
 			// Call the private method
 			(grouper as any)._expandGroupsWithPredictedTools(root, predictedTools);
@@ -734,7 +717,8 @@ describe('Virtual Tools - Grouper', () => {
 		it('addGroups should call _expandGroupsWithPredictedTools when embedding ranking is enabled and expand predicted tools', async () => {
 			// Set up mock to return specific predicted tools that match our test data
 			const predictedToolNames = ['ext_tool_2', 'builtin_5'];
-			mockToolEmbeddingsComputer.retrieveSimilarEmbeddingsForAvailableTools.mockResolvedValue(predictedToolNames);
+
+			const toolEmbeddingsRetrieverSpy = vi.spyOn(grouper['toolEmbeddingsComputer'], 'retrieveSimilarEmbeddingsForAvailableTools').mockResolvedValue(predictedToolNames);
 
 			// Create enough tools to trigger grouping
 			const extensionSource = makeExtensionSource('test.extension');
@@ -766,7 +750,7 @@ describe('Virtual Tools - Grouper', () => {
 			);
 
 			// Verify that the ToolEmbeddingsComputer was called correctly
-			expect(mockToolEmbeddingsComputer.retrieveSimilarEmbeddingsForAvailableTools).toHaveBeenCalledOnce();
+			expect(toolEmbeddingsRetrieverSpy).toHaveBeenCalledOnce();
 
 			// Verify that virtual tools were created for the extension tools
 			const virtualTools = root.contents.filter((tool): tool is VirtualTool => tool instanceof VirtualTool);
