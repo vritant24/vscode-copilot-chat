@@ -18,7 +18,11 @@ export class PreComputedToolEmbeddingsCache {
 	private readonly cache: IEmbeddingsCache;
 	private embeddingsMap: Map<string, Embedding> | undefined;
 
-	constructor(instantiationService: IInstantiationService, envService: IEnvService, private readonly _logService: ILogService) {
+	constructor(
+		@ILogService readonly _logService: ILogService,
+		@IInstantiationService instantiationService: IInstantiationService,
+		@IEnvService envService: IEnvService
+	) {
 		const cacheVersion = sanitizeVSCodeVersion(envService.getEditorInfo().version);
 		this.cache = instantiationService.createInstance(RemoteEmbeddingsCache, EmbeddingCacheType.GLOBAL, 'toolEmbeddings', cacheVersion, EMBEDDING_TYPE_FOR_TOOL_GROUPING, RemoteCacheType.Tools);
 	}
@@ -62,15 +66,16 @@ export class PreComputedToolEmbeddingsCache {
  * Manages tool embeddings from both pre-computed cache and runtime computation
  */
 export class ToolEmbeddingsComputer {
+	private readonly embeddingsCache: PreComputedToolEmbeddingsCache;
 	private readonly embeddingsStore = new Map<string, Embedding>();
 	private isInitialized = false;
 
 	constructor(
-		private readonly embeddingsCache: PreComputedToolEmbeddingsCache,
-		private readonly embeddingsComputer: IEmbeddingsComputer,
-		private readonly embeddingType: EmbeddingType,
-		private readonly _logService: ILogService
+		@IEmbeddingsComputer private readonly embeddingsComputer: IEmbeddingsComputer,
+		@ILogService private readonly _logService: ILogService,
+		@IInstantiationService instantiationService: IInstantiationService,
 	) {
+		this.embeddingsCache = instantiationService.createInstance(PreComputedToolEmbeddingsCache);
 	}
 
 	/**
@@ -89,8 +94,12 @@ export class ToolEmbeddingsComputer {
 			return [];
 		}
 
-		const rankedEmbeddings = rankEmbeddings(queryEmbedding, availableEmbeddings, count);
+		const rankedEmbeddings = this.rankEmbeddings(queryEmbedding, availableEmbeddings, count);
 		return rankedEmbeddings.map(x => x.value);
+	}
+
+	private rankEmbeddings(queryEmbedding: Embedding, availableEmbeddings: ReadonlyArray<readonly [string, Embedding]>, count: number) {
+		return rankEmbeddings(queryEmbedding, availableEmbeddings, count);
 	}
 
 	/**
@@ -150,7 +159,7 @@ export class ToolEmbeddingsComputer {
 			return undefined;
 		}
 
-		const embeddings = await this.embeddingsComputer.computeEmbeddings(this.embeddingType, toolNames, {}, new TelemetryCorrelationId('ToolEmbeddingsComputer::computeEmbeddingsForTools'), token);
+		const embeddings = await this.embeddingsComputer.computeEmbeddings(this.embeddingsCache.embeddingType, toolNames, {}, new TelemetryCorrelationId('ToolEmbeddingsComputer::computeEmbeddingsForTools'), token);
 
 		if (embeddings?.values.length === 0 || embeddings?.values.length !== toolNames.length) {
 			return undefined;
