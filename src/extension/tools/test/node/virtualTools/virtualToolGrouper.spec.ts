@@ -544,57 +544,30 @@ describe('Virtual Tools - Grouper', () => {
 		});
 	});
 
-	describe('_expandGroupsWithPredictedTools', () => {
+	describe('embedding-based expansion', () => {
 		beforeEach(() => {
 			const configurationService = accessor.get(IConfigurationService);
 			vi.spyOn(configurationService, 'getExperimentBasedConfig').mockReturnValue(true);
 		});
 
-		it('should expand virtual tools containing predicted tools in priority order', async () => {
-			// Create virtual tools with different predicted tools
-			const vt1 = new VirtualTool(
-				'activate_group1',
-				'Group 1',
-				0,
-				{ toolsetKey: 'group1', groups: [] },
-				[
-					makeTool('predicted_tool2'), // Lower priority (index 1)
-					makeTool('other_tool1')
-				]
-			);
-			vt1.isExpanded = false;
-
-			const vt2 = new VirtualTool(
-				'activate_group2',
-				'Group 2',
-				0,
-				{ toolsetKey: 'group2', groups: [] },
-				[
-					makeTool('predicted_tool1'), // Higher priority (index 0)
-					makeTool('other_tool2')
-				]
-			);
-			vt2.isExpanded = false;
-
-			const vt3 = new VirtualTool(
-				'activate_group3',
-				'Group 3',
-				0,
-				{ toolsetKey: 'group3', groups: [] },
-				[
-					makeTool('non_predicted_tool'),
-					makeTool('another_tool')
-				]
-			);
-			vt3.isExpanded = false;
-
-			root.contents = [vt1, vt2, vt3];
-
-			const predictedTools = [
-				makeTool('predicted_tool1'), // Index 0 - highest priority
-				makeTool('predicted_tool2')  // Index 1 - lower priority
+		it('should expand virtual tools containing predicted tools when embedding ranking is enabled', async () => {
+			// Create extension tools that will be grouped
+			const extensionSource = makeExtensionSource('test.extension');
+			const extensionTools = [
+				makeTool('predicted_tool1', extensionSource), // Higher priority (index 0)
+				makeTool('predicted_tool2', extensionSource), // Lower priority (index 1)
+				makeTool('other_tool1', extensionSource),
+				makeTool('other_tool2', extensionSource),
 			];
 
+			// Add enough builtin tools to trigger grouping
+			const builtinTools = Array.from({ length: START_GROUPING_AFTER_TOOL_COUNT }, (_, i) =>
+				makeTool(`builtin_${i}`)
+			);
+
+			const allTools = [...extensionTools, ...builtinTools];
+
+			// Mock the embedding computation and tool retrieval
 			const embeddingsComputer = accessor.get(IEmbeddingsComputer);
 			vi.spyOn(embeddingsComputer, 'computeEmbeddings').mockResolvedValue({
 				type: EmbeddingType.text3small_512,
@@ -604,165 +577,24 @@ describe('Virtual Tools - Grouper', () => {
 				}]
 			});
 
-			// Call the private method
-			(grouper as any)._expandGroupsWithPredictedTools(root, predictedTools);
-
-			// vt2 should be expanded first (contains highest priority tool)
-			expect(vt2.isExpanded).toBe(true);
-			expect(vt2.metadata.preExpanded).toBe(true);
-
-			// vt1 should be expanded second (contains lower priority tool)
-			expect(vt1.isExpanded).toBe(true);
-			expect(vt1.metadata.preExpanded).toBe(true);
-
-			// vt3 should not be expanded (doesn't contain predicted tools)
-			expect(vt3.isExpanded).toBe(false);
-		});
-
-		it('should not expand groups when predicted tools list is empty', async () => {
-			const vt = new VirtualTool(
-				'activate_group',
-				'Group',
-				0,
-				{ toolsetKey: 'group', groups: [] },
-				[makeTool('some_tool')]
-			);
-			vt.isExpanded = false;
-
-			root.contents = [vt];
-
-			// Call with empty predicted tools
-			(grouper as any)._expandGroupsWithPredictedTools(root, []);
-
-			// Virtual tool should remain unexpanded
-			expect(vt.isExpanded).toBe(false);
-		});
-
-		it('should not expand already expanded virtual tools', async () => {
-			const vt = new VirtualTool(
-				'activate_group',
-				'Group',
-				0,
-				{ toolsetKey: 'group', groups: [] },
-				[makeTool('predicted_tool1')]
-			);
-			vt.isExpanded = true; // Already expanded
-
-			root.contents = [vt];
-
-			const predictedTools = [makeTool('predicted_tool1')];
-
-			// Call the private method
-			(grouper as any)._expandGroupsWithPredictedTools(root, predictedTools);
-
-			// Should remain expanded but preExpanded should not be modified
-			expect(vt.isExpanded).toBe(true);
-			expect(vt.metadata.preExpanded).toBeUndefined();
-		});
-
-		it('should respect HARD_TOOL_LIMIT and stop expansion', async () => {
-			// Create a virtual tool that would exceed the hard limit if expanded
-			const largeVirtualTool = new VirtualTool(
-				'activate_large_group',
-				'Large Group',
-				0,
-				{ toolsetKey: 'large', groups: [] },
-				Array.from({ length: HARD_TOOL_LIMIT }, (_, i) => makeTool(`tool_${i}`))
-			);
-			largeVirtualTool.isExpanded = false;
-
-			// Add some existing tools to push us close to the limit
-			const existingTools = Array.from({ length: 10 }, (_, i) => makeTool(`existing_${i}`));
-			root.contents = [largeVirtualTool, ...existingTools];
-
-			const predictedTools = [makeTool('tool_0')]; // This tool is in the large group
-
-			// Call the private method
-			(grouper as any)._expandGroupsWithPredictedTools(root, predictedTools);
-
-			// Should not expand because it would exceed HARD_TOOL_LIMIT
-			expect(largeVirtualTool.isExpanded).toBe(false);
-		});
-
-		it('should handle virtual tools with mixed predicted and non-predicted tools', async () => {
-			const vt = new VirtualTool(
-				'activate_mixed_group',
-				'Mixed Group',
-				0,
-				{ toolsetKey: 'mixed', groups: [] },
-				[
-					makeTool('predicted_tool1'),
-					makeTool('non_predicted_tool1'),
-					makeTool('predicted_tool2'),
-					makeTool('non_predicted_tool2')
-				]
-			);
-			vt.isExpanded = false;
-
-			root.contents = [vt];
-
-			const predictedTools = [
-				makeTool('predicted_tool1'),
-				makeTool('predicted_tool2')
-			];
-
-			// Call the private method
-			(grouper as any)._expandGroupsWithPredictedTools(root, predictedTools);
-
-			// Should expand because it contains predicted tools
-			expect(vt.isExpanded).toBe(true);
-			expect(vt.metadata.preExpanded).toBe(true);
-		});
-
-		it('addGroups should call _expandGroupsWithPredictedTools when embedding ranking is enabled and expand predicted tools', async () => {
-			// Set up mock to return specific predicted tools that match our test data
-			const predictedToolNames = ['ext_tool_2', 'builtin_5'];
-
-			const toolEmbeddingsRetrieverSpy = vi.spyOn(grouper['toolEmbeddingsComputer'], 'retrieveSimilarEmbeddingsForAvailableTools').mockResolvedValue(predictedToolNames);
-
-			// Create enough tools to trigger grouping
-			const extensionSource = makeExtensionSource('test.extension');
-			const tools = [
-				// Extension tools that will be grouped
-				...Array.from({ length: GROUP_WITHIN_TOOLSET + 1 }, (_, i) =>
-					makeTool(`ext_tool_${i}`, extensionSource)
-				),
-				// Builtin tools to reach START_GROUPING_AFTER_TOOL_COUNT threshold
-				...Array.from({ length: START_GROUPING_AFTER_TOOL_COUNT }, (_, i) =>
-					makeTool(`builtin_${i}`)
-				)
-			];
+			// Mock the tool embeddings computer to return specific predicted tools
+			vi.spyOn(grouper['toolEmbeddingsComputer'], 'retrieveSimilarEmbeddingsForAvailableTools')
+				.mockResolvedValue(['predicted_tool1', 'predicted_tool2']);
 
 			const query = 'test query for embeddings';
-			const expandGroupsSpy = vi.spyOn(grouper as any, '_expandGroupsWithPredictedTools');
 
-			// Call addGroups
-			await grouper.addGroups(query, root, tools, CancellationToken.None);
+			// Call addGroups which should trigger embedding-based expansion
+			await grouper.addGroups(query, root, allTools, CancellationToken.None);
 
-			// Verify _expandGroupsWithPredictedTools was called with correct parameters
-			expect(expandGroupsSpy).toHaveBeenCalledOnce();
-			expect(expandGroupsSpy).toHaveBeenCalledWith(
-				root,
-				expect.arrayContaining([
-					expect.objectContaining({ name: 'ext_tool_2' }),
-					expect.objectContaining({ name: 'builtin_5' })
-				])
-			);
-
-			// Verify that the ToolEmbeddingsComputer was called correctly
-			expect(toolEmbeddingsRetrieverSpy).toHaveBeenCalledOnce();
-
-			// Verify that virtual tools were created for the extension tools
+			// Find the virtual tool that was created for the extension
 			const virtualTools = root.contents.filter((tool): tool is VirtualTool => tool instanceof VirtualTool);
 			expect(virtualTools.length).toBeGreaterThan(0);
 
-			// Find the virtual tool that contains the predicted extension tool
+			// The virtual tool containing predicted tools should be expanded
 			const extVirtualTool = virtualTools.find(vt =>
-				vt.contents.some(tool => tool.name === 'ext_tool_2')
+				vt.contents.some(tool => tool.name === 'predicted_tool1' || tool.name === 'predicted_tool2')
 			);
 			expect(extVirtualTool).toBeDefined();
-
-			// Verify that virtual tools containing predicted tools are expanded
 			if (extVirtualTool) {
 				expect(extVirtualTool.isExpanded).toBe(true);
 				expect(extVirtualTool.metadata.preExpanded).toBe(true);

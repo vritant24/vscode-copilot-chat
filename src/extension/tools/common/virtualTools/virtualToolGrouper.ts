@@ -99,10 +99,11 @@ export class VirtualToolGrouper implements IToolCategorization {
 		if (virtualToolEmbeddingRankingEnabled) {
 			const predictedTools = await this._getPredictedTools(query, tools, token);
 
-			this._expandGroupsWithPredictedTools(root, predictedTools);
+			// Aggressively expand groups with predicted tools up to hard limit
+			this._reExpandToolsToHitBudget(root, g => this._getGroupPredictedRelevancy(g, predictedTools), HARD_TOOL_LIMIT);
+		} else {
+			this._reExpandToolsToHitBudget(root, g => g.contents.length);
 		}
-
-		this._reExpandToolsToHitBudget(root);
 	}
 
 	public static deduplicateGroups(grouped: readonly (VirtualTool | LanguageModelToolInformation)[]) {
@@ -130,83 +131,52 @@ export class VirtualToolGrouper implements IToolCategorization {
 	}
 
 	/**
-	 * Expands groups that contain predicted tools in priority order until the hard tool limit is reached.
-	 * Only expands groups containing tools from the predictedTools array, which is ordered from high to low priority.
+	 * Gets the predicted relevancy score for a group based on the highest priority predicted tool it contains.
+	 * Lower scores indicate higher relevancy (earlier in the predictedTools array).
 	 */
-	private _expandGroupsWithPredictedTools(root: VirtualTool, predictedTools: LanguageModelToolInformation[]): void {
-		if (predictedTools.length === 0) {
-			return;
-		}
-
-		let toolCount = Iterable.length(root.tools());
-
+	private _getGroupPredictedRelevancy(group: VirtualTool, predictedTools: LanguageModelToolInformation[]): number {
 		// Create a set of predicted tool names for fast lookup
 		const predictedToolNames = new Set(predictedTools.map(tool => tool.name));
 
-		// create a map of tool name to its priority (index in predictedTools array)
+		// Create a map of tool name to its priority (index in predictedTools array)
 		const toolPriority = new Map<string, number>();
 		predictedTools.forEach((tool, index) => {
 			toolPriority.set(tool.name, index);
 		});
 
-		// Get unexpanded virtual tools that contain predicted tools
-		const expandableGroupsWithPredictedTools = root.contents
-			.filter((t): t is VirtualTool => {
-				if (!(t instanceof VirtualTool) || t.isExpanded) {
-					return false;
-				}
-				// Check if this group contains any predicted tools
-				return t.contents.some(tool =>
-					'name' in tool && predictedToolNames.has(tool.name)
-				);
-			})
-			.sort((a, b) => {
-				// Sort by highest priority predicted tool in each group
-				const aMaxPriority = Math.min(...a.contents
-					.filter(tool => 'name' in tool && predictedToolNames.has(tool.name))
-					.map(tool => toolPriority.get(tool.name) ?? -1)
-					.filter(index => index !== -1)
-				);
-				const bMaxPriority = Math.min(...b.contents
-					.filter(tool => 'name' in tool && predictedToolNames.has(tool.name))
-					.map(tool => toolPriority.get(tool.name) ?? -1)
-					.filter(index => index !== -1)
-				);
-				return aMaxPriority - bMaxPriority; // Lower index = higher priority
-			});
+		// Find the highest priority (lowest index) predicted tool in this group
+		const priorities = group.contents
+			.filter(tool => 'name' in tool && predictedToolNames.has(tool.name))
+			.map(tool => toolPriority.get(tool.name) ?? Infinity)
+			.filter(index => index !== Infinity);
 
-		// Expand groups in priority order until we hit the hard limit
-		for (const vtool of expandableGroupsWithPredictedTools) {
-			const nextCount = toolCount - 1 + vtool.contents.length;
-			if (nextCount > HARD_TOOL_LIMIT) {
-				break;
-			}
-
-			vtool.isExpanded = true;
-			vtool.metadata.preExpanded = true;
-			toolCount = nextCount;
-		}
+		// Return the highest priority (lowest index), or Infinity if no predicted tools
+		return priorities.length > 0 ? Math.min(...priorities) : Infinity;
 	}
 
 	/**
-	 * Eagerly expand small groups when possible just to reduce the number of indirections.
-	 * Later we should rank this based on query/embedding similarity to the request.
+	 * Eagerly expand groups when possible just to reduce the number of indirections.
+	 * Uses the provided ranker function to determine expansion priority.
+	 *
+	 * @param root The root virtual tool containing groups to expand
+	 * @param ranker Function to rank groups (lower scores = higher priority)
+	 * @param targetLimit Maximum number of tools to expand to (defaults to EXPAND_UNTIL_COUNT)
 	 *
 	 * Note: when this is made smarter, we should increase `MIN_TOOLSET_SIZE_TO_GROUP`,
 	 * which is right now because tiny toolsets are likely to automatically be included.
 	 */
-	private _reExpandToolsToHitBudget(root: VirtualTool): void {
+	private _reExpandToolsToHitBudget(root: VirtualTool, ranker: (group: VirtualTool) => number, targetLimit: number = Constant.EXPAND_UNTIL_COUNT): void {
 		let toolCount = Iterable.length(root.tools());
-		if (toolCount > Constant.EXPAND_UNTIL_COUNT) {
+		if (toolCount > targetLimit) {
 			return; // No need to expand further.
 		}
 
-		// Get unexpanded virtual tools, sorted ascending by their size.
+		// Get unexpanded virtual tools, sorted by the ranker function (ascending order).
 		const expandable = root.contents
 			.filter((t): t is VirtualTool => t instanceof VirtualTool && !t.isExpanded)
-			.sort((a, b) => a.contents.length - b.contents.length);
+			.sort((a, b) => ranker(a) - ranker(b));
 
-		// Expand them until we hit the minimum EXPAND_UNTIL_COUNT
+		// Expand them until we hit the target limit
 		for (const vtool of expandable) {
 			const nextCount = toolCount - 1 + vtool.contents.length;
 			if (nextCount > HARD_TOOL_LIMIT) {
@@ -217,7 +187,7 @@ export class VirtualToolGrouper implements IToolCategorization {
 			vtool.metadata.preExpanded = true;
 			toolCount = nextCount;
 
-			if (toolCount > Constant.EXPAND_UNTIL_COUNT) {
+			if (toolCount > targetLimit) {
 				break;
 			}
 		}
