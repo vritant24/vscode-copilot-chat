@@ -41,16 +41,19 @@ export class PreComputedToolEmbeddingsCache {
 
 	private async loadEmbeddings() {
 		try {
-			const embeddingsData = await this.cache.getCache<{ key: string; embedding?: Embedding }[]>();
+			const embeddingsData = await this.cache.getCache();
 			const embeddingsMap = new Map<string, Embedding>();
 
 			if (embeddingsData) {
-				for (const { key, embedding } of embeddingsData) {
-					if (embedding === undefined) {
+				for (const [key, embeddingVector] of Object.entries(embeddingsData)) {
+					if (embeddingVector === undefined) {
 						this._logService.warn(`Tool embedding missing for key: ${key}`);
 						continue;
 					}
-					embeddingsMap.set(key, embedding);
+					embeddingsMap.set(key, {
+						type: this.embeddingType,
+						value: embeddingVector.embedding
+					});
 				}
 			}
 
