@@ -16,6 +16,7 @@ import { ChatResponseProgressPart, ChatResponseReferencePart } from '../../../vs
 import { getAgentTools } from '../../intents/node/agentIntent';
 import { IToolCallingLoopOptions, ToolCallingLoop, ToolCallingLoopFetchOptions } from '../../intents/node/toolCallingLoop';
 import { AgentPrompt } from '../../prompts/node/agent/agentPrompt';
+import { PromptElementCtor } from '../../prompts/node/base/promptElement';
 import { PromptRenderer } from '../../prompts/node/base/promptRenderer';
 import { ToolName } from '../../tools/common/toolNames';
 import { normalizeToolSchema } from '../../tools/common/toolSchemaNormalizer';
@@ -27,6 +28,10 @@ export interface ISubagentToolCallingLoopOptions extends IToolCallingLoopOptions
 	request: ChatRequest;
 	location: ChatLocation;
 	promptText: string;
+	/** Optional: if provided, only these tools will be available to the subagent */
+	allowedTools?: Set<ToolName>;
+	/** Optional: custom prompt class to use instead of AgentPrompt */
+	customPromptClass?: PromptElementCtor<any, any>;
 }
 
 export class SubagentToolCallingLoop extends ToolCallingLoop<ISubagentToolCallingLoopOptions> {
@@ -56,7 +61,10 @@ export class SubagentToolCallingLoop extends ToolCallingLoop<ISubagentToolCallin
 		}
 		context.query = this.options.promptText;
 		context.chatVariables = new ChatVariablesCollection();
-		context.conversation = undefined;
+		// Only clear conversation if using default AgentPrompt (no custom prompt class)
+		if (!this.options.customPromptClass) {
+			context.conversation = undefined;
+		}
 		return context;
 	}
 
@@ -70,10 +78,11 @@ export class SubagentToolCallingLoop extends ToolCallingLoop<ISubagentToolCallin
 
 	protected async buildPrompt(promptContext: IBuildPromptContext, progress: Progress<ChatResponseReferencePart | ChatResponseProgressPart>, token: CancellationToken): Promise<IBuildPromptResult> {
 		const endpoint = await this.getEndpoint(this.options.request);
+		const PromptClass = this.options.customPromptClass ?? AgentPrompt;
 		const renderer = PromptRenderer.create(
 			this.instantiationService,
 			endpoint,
-			AgentPrompt,
+			PromptClass,
 			{
 				endpoint,
 				promptContext: promptContext,
@@ -85,11 +94,19 @@ export class SubagentToolCallingLoop extends ToolCallingLoop<ISubagentToolCallin
 	}
 
 	protected async getAvailableTools(): Promise<LanguageModelToolInformation[]> {
-		const excludedTools = new Set([ToolName.RunSubagent, ToolName.CoreManageTodoList]);
-		return (await getAgentTools(this.instantiationService, this.options.request))
-			.filter(tool => !excludedTools.has(tool.name as ToolName))
-			// TODO can't do virtual tools at this level
-			.slice(0, 128);
+		const allTools = await getAgentTools(this.instantiationService, this.options.request);
+
+		if (this.options.allowedTools) {
+			// If allowedTools is specified, only include those tools
+			return allTools.filter(tool => this.options.allowedTools!.has(tool.name as ToolName));
+		} else {
+			// Default behavior: exclude certain tools
+			const excludedTools = new Set([ToolName.RunSubagent, ToolName.CoreManageTodoList]);
+			return allTools
+				.filter(tool => !excludedTools.has(tool.name as ToolName))
+				// TODO can't do virtual tools at this level
+				.slice(0, 128);
+		}
 	}
 
 	protected async fetch({ messages, finishedCb, requestOptions }: ToolCallingLoopFetchOptions, token: CancellationToken): Promise<ChatResponse> {

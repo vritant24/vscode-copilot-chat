@@ -15,6 +15,7 @@ import { BaseToolsService } from '../common/toolsService';
 export class ToolsService extends BaseToolsService {
 	declare _serviceBrand: undefined;
 
+
 	private readonly _copilotTools: Lazy<Map<ToolName, ICopilotTool<any>>>;
 	private readonly _contributedToolCache: {
 		input: readonly vscode.LanguageModelToolInformation[];
